@@ -1,36 +1,51 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Pokerbook
 
-## Getting Started
+buy-ins, cash-outs, and clean settlements for home poker nights.
 
-First, run the development server:
+## Phase 1 status
 
-```bash
+- Next.js 15 App Router with TypeScript
+- Tailwind CSS
+- Supabase JS client installed with environment placeholders
+- Routes scaffolded: `/`, `/new`, `/session/[id]`
+- No auth, no database writes, no V1 feature logic yet
+
+## Local setup
+
+```powershell
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open `http://localhost:3000`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Supabase setup for Phase 2
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. Create a new Supabase project at `https://supabase.com`.
+2. Open Project Settings, then API.
+3. Copy the Project URL into `NEXT_PUBLIC_SUPABASE_URL`.
+4. Copy the anon public key into `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
+5. Save those values in a local `.env.local` file.
 
-## Learn More
+Use `.env.example` as the template. Do not commit `.env.local`.
 
-To learn more about Next.js, take a look at the following resources:
+Planned V1 tables:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```sql
+create table sessions (
+  id uuid primary key default gen_random_uuid(),
+  buy_in_amount integer not null,
+  created_at timestamptz not null default now(),
+  status text not null default 'active'
+);
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+create table players (
+  id uuid primary key default gen_random_uuid(),
+  session_id uuid not null references sessions(id) on delete cascade,
+  name text not null,
+  total_buy_ins integer not null default 0,
+  final_chips integer
+);
+```
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Realtime will be wired in Phase 4 after the core flow is working.
