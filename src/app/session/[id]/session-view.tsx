@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
@@ -34,6 +35,7 @@ function formatCurrency(amount: number) {
 }
 
 export function SessionView({ sessionId }: SessionViewProps) {
+  const router = useRouter();
   const [session, setSession] = useState<Session | null>(null);
   const [players, setPlayers] = useState<Player[]>([]);
   const [loadingState, setLoadingState] = useState<
@@ -77,6 +79,11 @@ export function SessionView({ sessionId }: SessionViewProps) {
         return;
       }
 
+      if (sessionData.status === "ended") {
+        router.replace(`/session/${sessionId}/summary`);
+        return;
+      }
+
       const { data: playerData, error: playersError } = await supabase
         .from("players")
         .select("id,name,total_buy_ins,final_chips,created_at")
@@ -103,7 +110,7 @@ export function SessionView({ sessionId }: SessionViewProps) {
     return () => {
       isMounted = false;
     };
-  }, [sessionId]);
+  }, [router, sessionId]);
 
   async function refreshPlayers() {
     if (!supabase) {
@@ -259,6 +266,21 @@ export function SessionView({ sessionId }: SessionViewProps) {
                   </article>
                 );
               })}
+            </div>
+
+            <div className="mt-8 border-t border-[var(--line)] pt-6">
+              <div className="grid gap-4 sm:grid-cols-[1fr_auto] sm:items-center">
+                <p className="max-w-xl text-sm leading-6 text-[var(--ink-soft)]">
+                  Done with the last hand? Enter final chips before closing the
+                  table.
+                </p>
+                <Link
+                  href={`/session/${sessionId}/end`}
+                  className="inline-flex h-12 items-center justify-center border border-[var(--terracotta)] px-5 font-mono text-xs uppercase tracking-[0.12em] text-[var(--terracotta)] transition hover:bg-[var(--terracotta)] hover:text-background"
+                >
+                  end session.
+                </Link>
+              </div>
             </div>
           </div>
         ) : null}
