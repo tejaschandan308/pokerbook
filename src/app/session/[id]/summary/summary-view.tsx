@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { computeSettlements } from "@/lib/settlements";
+import type { Settlement } from "@/lib/settlements";
 
 type Session = {
   id: string;
@@ -49,8 +51,42 @@ const dateFormatter = new Intl.DateTimeFormat("en-IN", {
   hour12: true,
 });
 
+const shortDateFormatter = new Intl.DateTimeFormat("en-IN", {
+  day: "numeric",
+  month: "long",
+  year: "numeric",
+});
+
 function formatDate(iso: string) {
   return dateFormatter.format(new Date(iso));
+}
+
+function buildShareText(
+  session: Session,
+  settlements: Settlement[],
+  tableBank: number,
+): string {
+  const title = session.name ? `settle up — ${session.name}` : "settle up";
+  const lines: string[] = [title];
+
+  if (session.ended_at) {
+    lines.push(shortDateFormatter.format(new Date(session.ended_at)));
+  }
+
+  if (settlements.length === 0) {
+    lines.push("everyone's even. nothing to settle. ♠");
+    lines.push(`table bank: ${currencyFormatter.format(tableBank)}`);
+  } else {
+    for (const s of settlements) {
+      lines.push(
+        `${s.fromName.toLowerCase()} pays ${s.toName.toLowerCase()} ${currencyFormatter.format(s.amount)}`,
+      );
+    }
+    lines.push(`table bank: ${currencyFormatter.format(tableBank)}`);
+    lines.push("all clear ♠");
+  }
+
+  return lines.join("\n");
 }
 
 export function SummaryView({ sessionId }: { sessionId: string }) {
@@ -61,6 +97,10 @@ export function SummaryView({ sessionId }: { sessionId: string }) {
     "loading" | "ready" | "missing" | "error"
   >("loading");
   const [errorMessage, setErrorMessage] = useState("");
+  const [view, setView] = useState<"payer" | "receiver">("payer");
+  const [shareState, setShareState] = useState<"idle" | "shared" | "copied">(
+    "idle",
+  );
 
   useEffect(() => {
     let isMounted = true;
@@ -149,6 +189,91 @@ export function SummaryView({ sessionId }: { sessionId: string }) {
       .sort((a, b) => b.net - a.net);
   }, [players, session]);
 
+  const settlements = useMemo<Settlement[]>(() => {
+    if (!isBalanced) return [];
+    return computeSettlements(
+      sortedPlayers.map((p) => ({
+        playerId: p.id,
+        name: p.name,
+        netPnL: p.net,
+      })),
+    );
+  }, [isBalanced, sortedPlayers]);
+
+  const byPayer = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        fromName: string;
+        payments: { toPlayerId: string; toName: string; amount: number }[];
+      }
+    >();
+    for (const s of settlements) {
+      if (!map.has(s.fromPlayerId)) {
+        map.set(s.fromPlayerId, { fromName: s.fromName, payments: [] });
+      }
+      map.get(s.fromPlayerId)!.payments.push({
+        toPlayerId: s.toPlayerId,
+        toName: s.toName,
+        amount: s.amount,
+      });
+    }
+    return Array.from(map.values());
+  }, [settlements]);
+
+  const byReceiver = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        toName: string;
+        receipts: { fromPlayerId: string; fromName: string; amount: number }[];
+      }
+    >();
+    for (const s of settlements) {
+      if (!map.has(s.toPlayerId)) {
+        map.set(s.toPlayerId, { toName: s.toName, receipts: [] });
+      }
+      map.get(s.toPlayerId)!.receipts.push({
+        fromPlayerId: s.fromPlayerId,
+        fromName: s.fromName,
+        amount: s.amount,
+      });
+    }
+    return Array.from(map.values());
+  }, [settlements]);
+
+  const everyoneEven = isBalanced && settlements.length === 0;
+
+  async function handleShare() {
+    if (!session) return;
+    const text = buildShareText(session, settlements, tableBank);
+
+    if (typeof navigator !== "undefined" && navigator.share) {
+      try {
+        await navigator.share({ text });
+        setShareState("shared");
+        setTimeout(() => setShareState("idle"), 2000);
+      } catch (err) {
+        if (err instanceof Error && err.name === "AbortError") return;
+        try {
+          await navigator.clipboard.writeText(text);
+          setShareState("copied");
+          setTimeout(() => setShareState("idle"), 2000);
+        } catch {
+          // Both share and clipboard failed — silently give up
+        }
+      }
+    } else {
+      try {
+        await navigator.clipboard.writeText(text);
+        setShareState("copied");
+        setTimeout(() => setShareState("idle"), 2000);
+      } catch {
+        // Clipboard not available — silently fail
+      }
+    }
+  }
+
   return (
     <main className="min-h-screen overflow-x-hidden bg-background px-5 py-6 text-foreground sm:px-10 sm:py-8">
       <section className="mx-auto w-full max-w-5xl">
@@ -212,7 +337,7 @@ export function SummaryView({ sessionId }: { sessionId: string }) {
               <p className="mt-5 border border-[var(--terracotta)] bg-[#fffaf0] p-3 text-sm text-[var(--terracotta)]">
                 {hasMissingChips
                   ? "some chip values are missing — "
-                  : "math doesn’t add up — "}
+                  : "math doesn't add up — "}
                 <Link
                   href={`/session/${sessionId}/end`}
                   className="underline underline-offset-2"
@@ -222,6 +347,7 @@ export function SummaryView({ sessionId }: { sessionId: string }) {
               </p>
             ) : null}
 
+            {/* P&L list */}
             <div className="mt-8">
               <p className="font-mono text-sm uppercase tracking-[0.18em] text-[var(--ink-soft)]">
                 the night.
@@ -279,19 +405,137 @@ export function SummaryView({ sessionId }: { sessionId: string }) {
               </div>
             </div>
 
+            {/* Settlements */}
             <div className="mt-10 border-t border-[var(--line)] pt-8">
               <p className="font-mono text-sm uppercase tracking-[0.18em] text-[var(--ink-soft)]">
-                settlements.
+                settle up.
               </p>
-              <p className="mt-4 text-lg leading-7 text-[var(--ink-soft)]">
-                settlements coming.{" "}
-                <span className="font-serif italic text-[var(--terracotta)]">
-                  for now: pay the winner.
-                </span>
-              </p>
-              <p className="mt-2 font-mono text-xs uppercase tracking-[0.14em] text-[var(--ink-soft)]">
-                phase 3 will show who pays whom.
-              </p>
+
+              {!isBalanced ? (
+                <p className="mt-4 text-base text-[var(--ink-soft)]">
+                  the books don&apos;t balance.{" "}
+                  <Link
+                    href={`/session/${sessionId}/end`}
+                    className="text-[var(--terracotta)] underline underline-offset-2"
+                  >
+                    recount or edit.
+                  </Link>
+                </p>
+              ) : everyoneEven ? (
+                <p className="mt-4 text-base text-[var(--ink-soft)]">
+                  everyone&apos;s even. nothing to settle.{" "}
+                  <span className="font-serif italic text-[var(--table-green)]">
+                    ♠
+                  </span>
+                </p>
+              ) : (
+                <>
+                  {/* Toggle */}
+                  <div className="mt-4 flex">
+                    <button
+                      type="button"
+                      onClick={() => setView("payer")}
+                      className={`h-8 border px-3 font-mono text-xs uppercase tracking-[0.12em] transition ${
+                        view === "payer"
+                          ? "border-foreground bg-foreground text-background"
+                          : "border-[var(--line)] text-[var(--ink-soft)] hover:text-foreground"
+                      }`}
+                    >
+                      by payer
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setView("receiver")}
+                      className={`h-8 border border-l-0 px-3 font-mono text-xs uppercase tracking-[0.12em] transition ${
+                        view === "receiver"
+                          ? "border-foreground bg-foreground text-background"
+                          : "border-[var(--line)] text-[var(--ink-soft)] hover:text-foreground"
+                      }`}
+                    >
+                      by receiver
+                    </button>
+                  </div>
+
+                  {/* By payer */}
+                  {view === "payer" ? (
+                    <div className="mt-4 space-y-5">
+                      {byPayer.map((payer) => (
+                        <div key={payer.fromName}>
+                          <p className="font-mono text-xs uppercase tracking-[0.16em] text-[var(--ink-soft)]">
+                            {payer.fromName} owes.
+                          </p>
+                          <ul className="mt-2 space-y-2">
+                            {payer.payments.map((payment) => (
+                              <li
+                                key={payment.toPlayerId}
+                                className="flex items-baseline justify-between gap-4 border border-[var(--line)] bg-[#fffaf0] px-4 py-3"
+                              >
+                                <span className="text-sm text-[var(--ink-soft)]">
+                                  <span className="mr-2 text-[var(--terracotta)]">
+                                    →
+                                  </span>
+                                  {payment.toName}
+                                </span>
+                                <span className="shrink-0 font-mono text-sm font-semibold text-[var(--terracotta)]">
+                                  {formatCurrency(payment.amount)}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  {/* By receiver */}
+                  {view === "receiver" ? (
+                    <div className="mt-4 space-y-5">
+                      {byReceiver.map((receiver) => (
+                        <div key={receiver.toName}>
+                          <p className="font-mono text-xs uppercase tracking-[0.16em] text-[var(--ink-soft)]">
+                            {receiver.toName} receives.
+                          </p>
+                          <ul className="mt-2 space-y-2">
+                            {receiver.receipts.map((receipt) => (
+                              <li
+                                key={receipt.fromPlayerId}
+                                className="flex items-baseline justify-between gap-4 border border-[var(--line)] bg-[#fffaf0] px-4 py-3"
+                              >
+                                <span className="text-sm text-[var(--ink-soft)]">
+                                  <span className="mr-2 text-[var(--table-green)]">
+                                    ←
+                                  </span>
+                                  from {receipt.fromName}
+                                </span>
+                                <span className="shrink-0 font-mono text-sm font-semibold text-[var(--table-green)]">
+                                  {formatCurrency(receipt.amount)}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </>
+              )}
+
+              {/* Share button — shown only when books balance */}
+              {isBalanced ? (
+                <div className="mt-6">
+                  <button
+                    type="button"
+                    onClick={handleShare}
+                    className="h-11 border border-[var(--table-green)] px-5 font-mono text-xs uppercase tracking-[0.12em] text-[var(--table-green)] transition hover:bg-[var(--table-green)] hover:text-background"
+                  >
+                    {shareState === "shared"
+                      ? "shared."
+                      : shareState === "copied"
+                        ? "copied to clipboard."
+                        : "share settlements."}
+                  </button>
+                </div>
+              ) : null}
             </div>
           </div>
         ) : null}

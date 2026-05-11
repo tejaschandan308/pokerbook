@@ -43,6 +43,7 @@ export function SessionView({ sessionId }: SessionViewProps) {
   >("loading");
   const [errorMessage, setErrorMessage] = useState("");
   const [pendingPlayerId, setPendingPlayerId] = useState<string | null>(null);
+  const [copyState, setCopyState] = useState<"idle" | "copied">("idle");
 
   const totalBuyIns = useMemo(
     () => players.reduce((sum, player) => sum + player.total_buy_ins, 0),
@@ -128,6 +129,16 @@ export function SessionView({ sessionId }: SessionViewProps) {
     }
   }
 
+  async function copyLink() {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      setCopyState("copied");
+      setTimeout(() => setCopyState("idle"), 2000);
+    } catch {
+      // Clipboard not available — silently fail
+    }
+  }
+
   async function addBuyIn(player: Player) {
     if (!supabase || pendingPlayerId) {
       return;
@@ -206,6 +217,13 @@ export function SessionView({ sessionId }: SessionViewProps) {
                   Tap once when someone re-buys. Everyone starts with one
                   buy-in.
                 </p>
+                <button
+                  type="button"
+                  onClick={copyLink}
+                  className="mt-4 font-mono text-xs uppercase tracking-[0.14em] text-[var(--ink-soft)] transition hover:text-foreground"
+                >
+                  {copyState === "copied" ? "copied." : "copy link."}
+                </button>
               </div>
 
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:min-w-[460px]">
