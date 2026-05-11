@@ -188,10 +188,7 @@ export function NewSessionForm() {
 
           <div className="mt-3 space-y-3">
             {players.map((player, index) => (
-              <div
-                key={index}
-                className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-[1fr_104px]"
-              >
+              <div key={index} className="flex items-center gap-2">
                 <input
                   aria-label={`player ${index + 1} name`}
                   type="text"
@@ -200,15 +197,26 @@ export function NewSessionForm() {
                     updatePlayerName(index, event.target.value)
                   }
                   placeholder={`player ${index + 1}`}
-                  className="h-12 min-w-0 border border-[var(--line)] bg-background px-3 text-base outline-none transition placeholder:text-[var(--ink-soft)]/55 focus:border-[var(--terracotta)]"
+                  className="h-12 min-w-0 flex-1 border border-[var(--line)] bg-background px-3 text-base outline-none transition placeholder:text-[var(--ink-soft)]/55 focus:border-[var(--terracotta)]"
                 />
                 <button
                   type="button"
                   onClick={() => removePlayer(index)}
                   disabled={players.length <= MIN_PLAYERS}
-                  className="h-12 w-full border border-[var(--line)] px-3 font-mono text-xs uppercase tracking-[0.12em] text-[var(--ink-soft)] transition enabled:hover:border-[var(--terracotta)] enabled:hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+                  aria-label="remove player"
+                  className="flex h-12 w-11 shrink-0 items-center justify-center text-[var(--ink-soft)] transition enabled:hover:text-[var(--terracotta)] disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  remove
+                  <svg
+                    width="10"
+                    height="10"
+                    viewBox="0 0 10 10"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M1 1L9 9M9 1L1 9" />
+                  </svg>
                 </button>
               </div>
             ))}
