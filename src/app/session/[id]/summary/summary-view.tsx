@@ -405,8 +405,18 @@ export function SummaryView({ sessionId }: { sessionId: string }) {
               </div>
             </div>
 
+            {/* Edit values */}
+            <div className="mt-6 flex justify-end">
+              <Link
+                href={`/session/${sessionId}/end`}
+                className="inline-flex h-10 items-center border border-[var(--line)] px-4 font-mono text-xs uppercase tracking-[0.12em] text-[var(--ink-soft)] transition hover:border-[var(--terracotta)] hover:text-foreground"
+              >
+                edit values.
+              </Link>
+            </div>
+
             {/* Settlements */}
-            <div className="mt-10 border-t border-[var(--line)] pt-8">
+            <div className="mt-6 border-t border-[var(--line)] pt-8">
               <p className="font-mono text-sm uppercase tracking-[0.18em] text-[var(--ink-soft)]">
                 settle up.
               </p>

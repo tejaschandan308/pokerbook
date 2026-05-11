@@ -55,6 +55,7 @@ export function EndSessionForm({ sessionId }: { sessionId: string }) {
   );
   const [submitError, setSubmitError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
 
   const totalBuyIns = useMemo(
     () =>
@@ -96,8 +97,7 @@ export function EndSessionForm({ sessionId }: { sessionId: string }) {
       }
 
       if (sessionData.status === "ended") {
-        router.replace(`/session/${sessionId}/summary`);
-        return;
+        setIsEditing(true);
       }
 
       const { data: playerData, error: playersError } = await supabase
@@ -235,7 +235,9 @@ export function EndSessionForm({ sessionId }: { sessionId: string }) {
           <Link href="/" className="transition hover:text-[var(--terracotta)]">
             pokerbook
           </Link>
-          <span className="text-[var(--terracotta)]">end session</span>
+          <span className="text-[var(--terracotta)]">
+            {isEditing ? "edit values" : "end session"}
+          </span>
         </nav>
 
         {loadingState === "loading" ? (
@@ -263,7 +265,7 @@ export function EndSessionForm({ sessionId }: { sessionId: string }) {
             <header className="grid gap-6 border-b border-[var(--line)] pb-8 lg:grid-cols-[1fr_auto] lg:items-end">
               <div>
                 <p className="font-mono text-sm uppercase tracking-[0.18em] text-[var(--terracotta)]">
-                  {"\u2666"} final count
+                  {"\u2666"} {isEditing ? "edit values" : "final count"}
                 </p>
                 <h1 className="mt-4 text-5xl font-semibold leading-none tracking-normal sm:text-7xl">
                   {session.name || "poker night."}
@@ -383,7 +385,11 @@ export function EndSessionForm({ sessionId }: { sessionId: string }) {
 
             <div className="mt-8 grid gap-3 border-t border-[var(--line)] pt-6 sm:grid-cols-[1fr_auto] sm:items-center">
               <Link
-                href={`/session/${sessionId}`}
+                href={
+                  isEditing
+                    ? `/session/${sessionId}/summary`
+                    : `/session/${sessionId}`
+                }
                 className="inline-flex h-12 items-center justify-center border border-[var(--line)] px-5 font-mono text-xs uppercase tracking-[0.12em] text-[var(--ink-soft)] transition hover:border-[var(--terracotta)] hover:text-foreground"
               >
                 cancel
@@ -393,7 +399,11 @@ export function EndSessionForm({ sessionId }: { sessionId: string }) {
                 disabled={isSaving}
                 className="h-12 border border-foreground bg-foreground px-5 font-mono text-xs uppercase tracking-[0.12em] text-background transition enabled:hover:bg-[var(--terracotta)] disabled:cursor-wait disabled:opacity-60"
               >
-                {isSaving ? "saving..." : "save & end session."}
+                {isSaving
+                  ? "saving..."
+                  : isEditing
+                    ? "save changes."
+                    : "save & end session."}
               </button>
             </div>
           </form>
