@@ -24,6 +24,8 @@ type SessionViewProps = {
   sessionId: string;
 };
 
+const MAX_PLAYERS = 10;
+
 const currencyFormatter = new Intl.NumberFormat("en-IN", {
   currency: "INR",
   maximumFractionDigits: 0,
@@ -44,6 +46,10 @@ export function SessionView({ sessionId }: SessionViewProps) {
   const [errorMessage, setErrorMessage] = useState("");
   const [pendingPlayerId, setPendingPlayerId] = useState<string | null>(null);
   const [copyState, setCopyState] = useState<"idle" | "copied">("idle");
+  const [ghostState, setGhostState] = useState<"idle" | "form">("idle");
+  const [newPlayerName, setNewPlayerName] = useState("");
+  const [addPlayerError, setAddPlayerError] = useState("");
+  const [isAddingPlayer, setIsAddingPlayer] = useState(false);
 
   const totalBuyIns = useMemo(
     () => players.reduce((sum, player) => sum + player.total_buy_ins, 0),
@@ -127,6 +133,47 @@ export function SessionView({ sessionId }: SessionViewProps) {
     if (data) {
       setPlayers(data);
     }
+  }
+
+  function cancelAddPlayer() {
+    setGhostState("idle");
+    setNewPlayerName("");
+    setAddPlayerError("");
+  }
+
+  async function addPlayer() {
+    if (!supabase || isAddingPlayer) return;
+
+    const trimmed = newPlayerName.trim();
+    if (!trimmed) return;
+
+    const isDuplicate = players.some(
+      (p) => p.name.toLowerCase() === trimmed.toLowerCase(),
+    );
+    if (isDuplicate) {
+      setAddPlayerError("already in the game.");
+      return;
+    }
+
+    setIsAddingPlayer(true);
+    setAddPlayerError("");
+
+    const { error } = await supabase.from("players").insert({
+      session_id: sessionId,
+      name: trimmed,
+      total_buy_ins: 1,
+    });
+
+    if (error) {
+      setAddPlayerError("couldn't add the player.");
+      setIsAddingPlayer(false);
+      return;
+    }
+
+    await refreshPlayers();
+    setNewPlayerName("");
+    setGhostState("idle");
+    setIsAddingPlayer(false);
   }
 
   async function copyLink() {
@@ -220,9 +267,30 @@ export function SessionView({ sessionId }: SessionViewProps) {
                 <button
                   type="button"
                   onClick={copyLink}
-                  className="mt-4 font-mono text-xs uppercase tracking-[0.14em] text-[var(--ink-soft)] transition hover:text-foreground"
+                  className="mt-5 inline-flex h-11 items-center gap-2 border border-[var(--table-green)] px-4 font-mono text-xs uppercase tracking-[0.12em] text-[var(--table-green)] transition hover:bg-[var(--table-green)] hover:text-background"
                 >
-                  {copyState === "copied" ? "copied." : "copy link."}
+                  {copyState === "copied" ? (
+                    "copied."
+                  ) : (
+                    <>
+                      <svg
+                        width="13"
+                        height="13"
+                        viewBox="0 0 13 13"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden="true"
+                      >
+                        <path d="M4.5 1H2a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1V8.5" />
+                        <path d="M7.5 1H12v4.5" />
+                        <path d="M12 1L6 7" />
+                      </svg>
+                      copy link.
+                    </>
+                  )}
                 </button>
               </div>
 
@@ -284,6 +352,69 @@ export function SessionView({ sessionId }: SessionViewProps) {
                   </article>
                 );
               })}
+              {/* Ghost tile — add player */}
+              {players.length >= MAX_PLAYERS ? (
+                <article className="flex min-h-[160px] min-w-0 flex-col items-center justify-center border border-dashed border-[var(--line)] p-5 opacity-50">
+                  <p className="font-mono text-xs uppercase tracking-[0.14em] text-[var(--ink-soft)]">
+                    session full.
+                  </p>
+                </article>
+              ) : ghostState === "idle" ? (
+                <article
+                  onClick={() => setGhostState("form")}
+                  className="flex min-h-[160px] min-w-0 cursor-pointer flex-col items-center justify-center border border-dashed border-[var(--line)] p-5 transition hover:border-[var(--ink-soft)] hover:bg-[#fffaf0]"
+                >
+                  <span className="text-3xl font-light text-[var(--ink-soft)]">
+                    +
+                  </span>
+                  <p className="mt-2 font-mono text-xs uppercase tracking-[0.14em] text-[var(--ink-soft)]">
+                    add player.
+                  </p>
+                </article>
+              ) : (
+                <article className="min-w-0 border border-[var(--line)] bg-[#fffaf0] p-5 shadow-[0_18px_60px_rgba(36,25,19,0.07)]">
+                  <p className="font-mono text-xs uppercase tracking-[0.16em] text-[var(--ink-soft)]">
+                    new player.
+                  </p>
+                  <input
+                    autoFocus
+                    type="text"
+                    placeholder="name"
+                    value={newPlayerName}
+                    onChange={(e) => {
+                      setNewPlayerName(e.target.value);
+                      setAddPlayerError("");
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") addPlayer();
+                      if (e.key === "Escape") cancelAddPlayer();
+                    }}
+                    className="mt-2 h-11 w-full border border-[var(--line)] bg-background px-3 text-base outline-none transition focus:border-[var(--terracotta)]"
+                  />
+                  {addPlayerError ? (
+                    <p className="mt-1 text-xs text-[var(--terracotta)]">
+                      {addPlayerError}
+                    </p>
+                  ) : null}
+                  <div className="mt-3 flex gap-2">
+                    <button
+                      type="button"
+                      onClick={cancelAddPlayer}
+                      className="h-9 flex-1 border border-[var(--line)] font-mono text-xs uppercase tracking-[0.12em] text-[var(--ink-soft)] transition hover:border-[var(--terracotta)] hover:text-foreground"
+                    >
+                      cancel.
+                    </button>
+                    <button
+                      type="button"
+                      onClick={addPlayer}
+                      disabled={!newPlayerName.trim() || isAddingPlayer}
+                      className="h-9 flex-1 border border-[var(--table-green)] font-mono text-xs uppercase tracking-[0.12em] text-[var(--table-green)] transition enabled:hover:bg-[var(--table-green)] enabled:hover:text-background disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      {isAddingPlayer ? "adding..." : "add."}
+                    </button>
+                  </div>
+                </article>
+              )}
             </div>
 
             <div className="mt-8 border-t border-[var(--line)] pt-6">
