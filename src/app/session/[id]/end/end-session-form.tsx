@@ -216,7 +216,7 @@ export function EndSessionForm({ sessionId }: { sessionId: string }) {
 
     const { error: sessionError } = await supabase
       .from("sessions")
-      .update({ status: "ended" })
+      .update({ status: "ended", ended_at: new Date().toISOString() })
       .eq("id", sessionId);
 
     if (sessionError) {
