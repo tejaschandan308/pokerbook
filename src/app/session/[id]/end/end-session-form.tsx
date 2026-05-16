@@ -58,7 +58,7 @@ export function EndSessionForm({ sessionId }: { sessionId: string }) {
   const [isSaving, setIsSaving] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [isHost, setIsHost] = useState(false);
-  const [inputFocused, setInputFocused] = useState(false);
+  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
 
   const totalBuyIns = useMemo(
     () =>
@@ -185,6 +185,22 @@ export function EndSessionForm({ sessionId }: { sessionId: string }) {
       isMounted = false;
     };
   }, [router, sessionId]);
+
+  useEffect(() => {
+    // visualViewport unsupported (old browsers) → leave isKeyboardOpen false so the bar is always visible.
+    if (typeof window === "undefined" || !window.visualViewport) return;
+
+    const viewport = window.visualViewport;
+    const initialHeight = viewport.height;
+
+    function handleResize() {
+      // A shrink of >150px reliably signals a virtual keyboard; browser toolbars are <100px.
+      setIsKeyboardOpen(initialHeight - viewport.height > 150);
+    }
+
+    viewport.addEventListener("resize", handleResize);
+    return () => viewport.removeEventListener("resize", handleResize);
+  }, []);
 
   function updatePlayerField(
     playerId: string,
@@ -336,12 +352,6 @@ export function EndSessionForm({ sessionId }: { sessionId: string }) {
               id="end-session-form"
               noValidate
               onSubmit={handleSubmit}
-              onFocus={() => setInputFocused(true)}
-              onBlur={(e) => {
-                if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
-                  setInputFocused(false);
-                }
-              }}
               className="py-8 sm:py-12"
             >
               <header className="grid gap-6 border-b border-[var(--line)] pb-8 lg:grid-cols-[1fr_auto] lg:items-end">
@@ -487,11 +497,11 @@ export function EndSessionForm({ sessionId }: { sessionId: string }) {
 
       {/* Sticky delta bar — fixed to bottom, outside <main> to avoid overflow clipping.
           Hidden while any input is focused so the mobile keyboard doesn't push it into the content. */}
-      {loadingState === "ready" && session && delta !== null && !inputFocused ? (
+      {loadingState === "ready" && session && delta !== null && !isKeyboardOpen ? (
         <div className="fixed bottom-0 left-0 right-0 z-10 border-t border-[var(--line)] bg-[#fffaf0] shadow-[0_-4px_20px_rgba(36,25,19,0.08)]">
           <div className="mx-auto max-w-5xl px-5 sm:px-10">
             <div className="flex flex-col gap-3 py-3 lg:flex-row lg:items-center lg:justify-between lg:gap-6 lg:py-4">
-              <div className="min-w-0 flex-1">
+              <div className="min-w-0 flex-1 text-center lg:text-left">
                 {delta === 0 ? (
                   <p className="font-mono text-xs uppercase tracking-[0.16em] text-green-700">
                     ✓ chip counts match
@@ -519,13 +529,13 @@ export function EndSessionForm({ sessionId }: { sessionId: string }) {
               </div>
 
               {isHost ? (
-                <div className="flex shrink-0 items-center gap-2">
+                <div className="flex w-full items-center lg:w-auto lg:shrink-0">
                   {delta === 0 ? (
                     <button
                       type="submit"
                       form="end-session-form"
                       disabled={isSaving}
-                      className="h-10 border border-foreground bg-foreground px-4 font-mono text-xs uppercase tracking-[0.12em] text-background transition enabled:hover:bg-[var(--terracotta)] disabled:cursor-wait disabled:opacity-60"
+                      className="h-11 w-full border border-foreground bg-foreground px-4 font-mono text-xs uppercase tracking-[0.12em] text-background transition enabled:hover:bg-[var(--terracotta)] disabled:cursor-wait disabled:opacity-60 lg:h-10 lg:w-auto"
                     >
                       {isSaving
                         ? "saving..."
@@ -537,7 +547,7 @@ export function EndSessionForm({ sessionId }: { sessionId: string }) {
                     <button
                       type="button"
                       onClick={handleDivideEqually}
-                      className="h-10 border border-[var(--line)] px-4 font-mono text-xs uppercase tracking-[0.12em] text-[var(--ink-soft)] transition hover:border-[var(--terracotta)] hover:text-foreground"
+                      className="h-11 w-full border border-[var(--line)] px-4 font-mono text-xs uppercase tracking-[0.12em] text-[var(--ink-soft)] transition hover:border-[var(--terracotta)] hover:text-foreground lg:h-10 lg:w-auto"
                     >
                       divide {formatCurrency(Math.abs(delta))} equally
                     </button>
