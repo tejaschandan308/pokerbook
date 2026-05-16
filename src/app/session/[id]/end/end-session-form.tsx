@@ -58,6 +58,7 @@ export function EndSessionForm({ sessionId }: { sessionId: string }) {
   const [isSaving, setIsSaving] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [isHost, setIsHost] = useState(false);
+  const [inputFocused, setInputFocused] = useState(false);
 
   const totalBuyIns = useMemo(
     () =>
@@ -250,15 +251,6 @@ export function EndSessionForm({ sessionId }: { sessionId: string }) {
     );
   }
 
-  function handleScrollToBuyIns() {
-    const firstPlayerId = players[0]?.id;
-    if (firstPlayerId) {
-      document
-        .getElementById(`buy-ins-${firstPlayerId}`)
-        ?.scrollIntoView({ behavior: "smooth" });
-    }
-  }
-
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -344,6 +336,12 @@ export function EndSessionForm({ sessionId }: { sessionId: string }) {
               id="end-session-form"
               noValidate
               onSubmit={handleSubmit}
+              onFocus={() => setInputFocused(true)}
+              onBlur={(e) => {
+                if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+                  setInputFocused(false);
+                }
+              }}
               className="py-8 sm:py-12"
             >
               <header className="grid gap-6 border-b border-[var(--line)] pb-8 lg:grid-cols-[1fr_auto] lg:items-end">
@@ -487,31 +485,55 @@ export function EndSessionForm({ sessionId }: { sessionId: string }) {
         </section>
       </main>
 
-      {/* Sticky delta bar — fixed to bottom, outside <main> to avoid overflow clipping */}
-      {loadingState === "ready" && session && (isHost || delta !== null) ? (
+      {/* Sticky delta bar — fixed to bottom, outside <main> to avoid overflow clipping.
+          Hidden while any input is focused so the mobile keyboard doesn't push it into the content. */}
+      {loadingState === "ready" && session && delta !== null && !inputFocused ? (
         <div className="fixed bottom-0 left-0 right-0 z-10 border-t border-[var(--line)] bg-[#fffaf0] shadow-[0_-4px_20px_rgba(36,25,19,0.08)]">
           <div className="mx-auto max-w-5xl px-5 sm:px-10">
             <div className="flex flex-col gap-3 py-3 lg:flex-row lg:items-center lg:justify-between lg:gap-6 lg:py-4">
               <div className="min-w-0 flex-1">
-                {delta === null ? null : delta === 0 ? (
+                {delta === 0 ? (
                   <p className="font-mono text-xs uppercase tracking-[0.16em] text-green-700">
                     ✓ chip counts match
                   </p>
-                ) : (
+                ) : tableBank > 0 && Math.abs(delta) / tableBank > 0.5 ? (
                   <p className="text-sm leading-5 text-[var(--terracotta)]">
-                    {delta > 0
-                      ? `Chip counts are over by ${formatCurrency(Math.abs(delta))}. Players counted ${formatCurrency(totalFinalChips)} but table bank is ${formatCurrency(tableBank)}.`
-                      : `Chip counts are short by ${formatCurrency(Math.abs(delta))}. Players counted ${formatCurrency(totalFinalChips)} but table bank is ${formatCurrency(tableBank)}.`}
+                    Delta is too large to divide. Recount and edit buy-ins above.
                   </p>
+                ) : (
+                  <>
+                    {/* Condensed on mobile */}
+                    <p className="text-sm leading-5 text-[var(--terracotta)] lg:hidden">
+                      {delta > 0
+                        ? `Over by ${formatCurrency(Math.abs(delta))} (${formatCurrency(totalFinalChips)} / ${formatCurrency(tableBank)})`
+                        : `Short by ${formatCurrency(Math.abs(delta))} (${formatCurrency(totalFinalChips)} / ${formatCurrency(tableBank)})`}
+                    </p>
+                    {/* Full on desktop */}
+                    <p className="hidden text-sm leading-5 text-[var(--terracotta)] lg:block">
+                      {delta > 0
+                        ? `Chip counts are over by ${formatCurrency(Math.abs(delta))}. Players counted ${formatCurrency(totalFinalChips)} but table bank is ${formatCurrency(tableBank)}.`
+                        : `Chip counts are short by ${formatCurrency(Math.abs(delta))}. Players counted ${formatCurrency(totalFinalChips)} but table bank is ${formatCurrency(tableBank)}.`}
+                    </p>
+                  </>
                 )}
               </div>
 
               {isHost ? (
-                <div className="flex shrink-0 flex-wrap items-center gap-2">
-                  {delta !== null &&
-                  delta !== 0 &&
-                  tableBank > 0 &&
-                  Math.abs(delta) / tableBank <= 0.5 ? (
+                <div className="flex shrink-0 items-center gap-2">
+                  {delta === 0 ? (
+                    <button
+                      type="submit"
+                      form="end-session-form"
+                      disabled={isSaving}
+                      className="h-10 border border-foreground bg-foreground px-4 font-mono text-xs uppercase tracking-[0.12em] text-background transition enabled:hover:bg-[var(--terracotta)] disabled:cursor-wait disabled:opacity-60"
+                    >
+                      {isSaving
+                        ? "saving..."
+                        : isEditing
+                          ? "save changes."
+                          : "save & end session."}
+                    </button>
+                  ) : tableBank > 0 && Math.abs(delta) / tableBank <= 0.5 ? (
                     <button
                       type="button"
                       onClick={handleDivideEqually}
@@ -520,27 +542,6 @@ export function EndSessionForm({ sessionId }: { sessionId: string }) {
                       divide {formatCurrency(Math.abs(delta))} equally
                     </button>
                   ) : null}
-                  {delta !== null && delta !== 0 ? (
-                    <button
-                      type="button"
-                      onClick={handleScrollToBuyIns}
-                      className="h-10 border border-[var(--line)] px-4 font-mono text-xs uppercase tracking-[0.12em] text-[var(--ink-soft)] transition hover:border-[var(--terracotta)] hover:text-foreground"
-                    >
-                      edit buy-ins
-                    </button>
-                  ) : null}
-                  <button
-                    type="submit"
-                    form="end-session-form"
-                    disabled={isSaving}
-                    className="h-10 border border-foreground bg-foreground px-4 font-mono text-xs uppercase tracking-[0.12em] text-background transition enabled:hover:bg-[var(--terracotta)] disabled:cursor-wait disabled:opacity-60"
-                  >
-                    {isSaving
-                      ? "saving..."
-                      : isEditing
-                        ? "save changes."
-                        : "save & end session."}
-                  </button>
                 </div>
               ) : null}
             </div>
