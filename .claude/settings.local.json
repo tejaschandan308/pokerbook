@@ -4,7 +4,9 @@
       "Bash(npm run *)",
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\Chandan Kumar\\\\projects\\\\pokerbook\" -Recurse -Directory -Name)",
+      "Bash(Select-Object -First 30)"
     ]
   }
 }

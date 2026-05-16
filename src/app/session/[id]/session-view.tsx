@@ -52,6 +52,10 @@ export function SessionView({ sessionId }: SessionViewProps) {
   const [addPlayerError, setAddPlayerError] = useState("");
   const [isAddingPlayer, setIsAddingPlayer] = useState(false);
 
+  // Delete player state
+  const [deletePlayerId, setDeletePlayerId] = useState<string | null>(null);
+  const [isDeletingPlayer, setIsDeletingPlayer] = useState(false);
+
   // PIN / host auth state
   const [sessionHasPin, setSessionHasPin] = useState(false);
   const [isHost, setIsHost] = useState(false);
@@ -148,6 +152,34 @@ export function SessionView({ sessionId }: SessionViewProps) {
       isMounted = false;
     };
   }, [router, sessionId]);
+
+  // Realtime: propagate player deletions to all viewers of this session.
+  useEffect(() => {
+    if (!supabase) return;
+
+    const channel = supabase
+      .channel(`session-players-${sessionId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "DELETE",
+          schema: "public",
+          table: "players",
+          filter: `session_id=eq.${sessionId}`,
+        },
+        (payload) => {
+          const deletedId = (payload.old as { id: string }).id;
+          if (deletedId) {
+            setPlayers((current) => current.filter((p) => p.id !== deletedId));
+          }
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase?.removeChannel(channel);
+    };
+  }, [sessionId]);
 
   async function refreshPlayers() {
     if (!supabase) {
@@ -256,6 +288,32 @@ export function SessionView({ sessionId }: SessionViewProps) {
     }
   }
 
+  async function deletePlayer() {
+    if (!supabase || !deletePlayerId || isDeletingPlayer) return;
+
+    setIsDeletingPlayer(true);
+    setErrorMessage("");
+
+    const storedPin = getStoredPin(sessionId);
+    const { error } = await supabase.rpc("delete_player_with_pin", {
+      p_player_id: deletePlayerId,
+      p_session_id: sessionId,
+      p_pin: storedPin,
+    });
+
+    if (error) {
+      setErrorMessage("couldn't remove the player. please try again.");
+      setIsDeletingPlayer(false);
+      setDeletePlayerId(null);
+      return;
+    }
+
+    // Optimistically remove from local state; realtime will sync other viewers.
+    setPlayers((current) => current.filter((p) => p.id !== deletePlayerId));
+    setDeletePlayerId(null);
+    setIsDeletingPlayer(false);
+  }
+
   async function addBuyIn(player: Player) {
     if (!supabase || pendingPlayerId) {
       return;
@@ -339,6 +397,41 @@ export function SessionView({ sessionId }: SessionViewProps) {
                 className="h-10 flex-1 border border-foreground bg-foreground font-mono text-xs uppercase tracking-[0.12em] text-background transition enabled:hover:bg-[var(--terracotta)] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isVerifyingPin ? "checking..." : "unlock."}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Delete player confirmation modal */}
+      {deletePlayerId ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-5">
+          <div className="w-full max-w-sm border border-[var(--line)] bg-background p-6 shadow-xl">
+            <p className="font-mono text-xs uppercase tracking-[0.18em] text-[var(--terracotta)]">
+              confirm
+            </p>
+            <h2 className="mt-3 text-2xl font-semibold">
+              Delete {players.find((p) => p.id === deletePlayerId)?.name}?
+            </h2>
+            <p className="mt-2 text-sm text-[var(--ink-soft)]">
+              This will remove the player AND their buy-ins from the table bank.
+            </p>
+            <div className="mt-4 flex gap-3">
+              <button
+                type="button"
+                onClick={() => setDeletePlayerId(null)}
+                disabled={isDeletingPlayer}
+                className="h-10 flex-1 border border-[var(--line)] font-mono text-xs uppercase tracking-[0.12em] text-[var(--ink-soft)] transition hover:border-[var(--terracotta)] hover:text-foreground disabled:opacity-50"
+              >
+                cancel.
+              </button>
+              <button
+                type="button"
+                onClick={deletePlayer}
+                disabled={isDeletingPlayer}
+                className="h-10 flex-1 border border-[var(--terracotta)] bg-[var(--terracotta)] font-mono text-xs uppercase tracking-[0.12em] text-background transition enabled:hover:bg-background enabled:hover:text-[var(--terracotta)] disabled:cursor-wait disabled:opacity-50"
+              >
+                {isDeletingPlayer ? "removing..." : "delete."}
               </button>
             </div>
           </div>
@@ -473,9 +566,22 @@ export function SessionView({ sessionId }: SessionViewProps) {
                           in for {formatCurrency(playerInFor)}
                         </p>
                       </div>
-                      <span className="shrink-0 font-serif text-3xl italic text-[var(--terracotta)]">
-                        {player.total_buy_ins}
-                      </span>
+                      <div className="flex shrink-0 flex-col items-end gap-1">
+                        {isHost ? (
+                          <button
+                            type="button"
+                            onClick={() => setDeletePlayerId(player.id)}
+                            disabled={Boolean(pendingPlayerId)}
+                            aria-label={`Remove ${player.name}`}
+                            className="flex h-8 w-8 items-center justify-center text-base text-[var(--ink-soft)] transition hover:text-[var(--terracotta)] disabled:opacity-40"
+                          >
+                            ×
+                          </button>
+                        ) : null}
+                        <span className="font-serif text-3xl italic text-[var(--terracotta)]">
+                          {player.total_buy_ins}
+                        </span>
+                      </div>
                     </div>
 
                     <div className="mt-7 flex items-end justify-between gap-4">

@@ -57,6 +57,7 @@ export function EndSessionForm({ sessionId }: { sessionId: string }) {
   const [submitError, setSubmitError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const [isHost, setIsHost] = useState(false);
 
   const totalBuyIns = useMemo(
     () =>
@@ -68,6 +69,28 @@ export function EndSessionForm({ sessionId }: { sessionId: string }) {
   );
 
   const tableBank = session ? totalBuyIns * session.buy_in_amount : 0;
+
+  const allChipsFilled = useMemo(
+    () =>
+      players.length > 0 &&
+      players.every((p) => {
+        const v = p.finalChips.trim();
+        if (v === "") return false;
+        const n = Number(v);
+        return Number.isInteger(n) && n >= 0;
+      }),
+    [players],
+  );
+
+  const totalFinalChips = useMemo(
+    () =>
+      allChipsFilled
+        ? players.reduce((sum, p) => sum + Number(p.finalChips), 0)
+        : 0,
+    [players, allChipsFilled],
+  );
+
+  const delta = allChipsFilled ? totalFinalChips - tableBank : null;
 
   useEffect(() => {
     let isMounted = true;
@@ -118,6 +141,9 @@ export function EndSessionForm({ sessionId }: { sessionId: string }) {
           return;
         }
       }
+
+      // Everyone who reaches here has edit access (PIN verified or no PIN required)
+      if (isMounted) setIsHost(true);
 
       if (sessionData.status === "ended") {
         setIsEditing(true);
@@ -205,6 +231,34 @@ export function EndSessionForm({ sessionId }: { sessionId: string }) {
     return Object.keys(nextErrors).length === 0;
   }
 
+  function handleDivideEqually() {
+    if (delta === null || delta === 0) return;
+    const n = players.length;
+    if (n === 0) return;
+    const absAdj = Math.abs(delta);
+    const sign = delta > 0 ? -1 : 1;
+    const perPlayer = Math.floor(absAdj / n);
+    const remainder = absAdj - perPlayer * n;
+    setPlayers((currentPlayers) =>
+      currentPlayers.map((player, index) => {
+        const adj = (index === 0 ? perPlayer + remainder : perPlayer) * sign;
+        return {
+          ...player,
+          finalChips: String(Math.max(0, Number(player.finalChips) + adj)),
+        };
+      }),
+    );
+  }
+
+  function handleScrollToBuyIns() {
+    const firstPlayerId = players[0]?.id;
+    if (firstPlayerId) {
+      document
+        .getElementById(`buy-ins-${firstPlayerId}`)
+        ?.scrollIntoView({ behavior: "smooth" });
+    }
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -253,187 +307,247 @@ export function EndSessionForm({ sessionId }: { sessionId: string }) {
   }
 
   return (
-    <main className="min-h-screen overflow-x-hidden bg-background px-5 py-6 text-foreground sm:px-10 sm:py-8">
-      <section className="mx-auto w-full max-w-5xl">
-        <nav className="flex items-center justify-between gap-4 border-b border-[var(--line)] pb-5 font-mono text-xs uppercase tracking-[0.18em] text-[var(--ink-soft)]">
-          <Link href="/" className="transition hover:text-[var(--terracotta)]">
-            pokerbook
-          </Link>
-          <span className="text-[var(--terracotta)]">
-            {isEditing ? "edit values" : "end session"}
-          </span>
-        </nav>
+    <>
+      <main className="min-h-screen overflow-x-hidden bg-background px-5 py-6 text-foreground sm:px-10 sm:py-8">
+        <section className="mx-auto w-full max-w-5xl">
+          <nav className="flex items-center justify-between gap-4 border-b border-[var(--line)] pb-5 font-mono text-xs uppercase tracking-[0.18em] text-[var(--ink-soft)]">
+            <Link href="/" className="transition hover:text-[var(--terracotta)]">
+              pokerbook
+            </Link>
+            <span className="text-[var(--terracotta)]">
+              {isEditing ? "edit values" : "end session"}
+            </span>
+          </nav>
 
-        {loadingState === "loading" ? (
-          <EndSessionMessage eyebrow="loading" headline="counting the table." />
-        ) : null}
+          {loadingState === "loading" ? (
+            <EndSessionMessage eyebrow="loading" headline="counting the table." />
+          ) : null}
 
-        {loadingState === "missing" ? (
-          <EndSessionMessage
-            eyebrow="not found"
-            headline="no table here."
-            body="Check the link and try again."
-          />
-        ) : null}
+          {loadingState === "missing" ? (
+            <EndSessionMessage
+              eyebrow="not found"
+              headline="no table here."
+              body="Check the link and try again."
+            />
+          ) : null}
 
-        {loadingState === "error" ? (
-          <EndSessionMessage
-            eyebrow="blocked"
-            headline="couldn't load this one."
-            body={submitError || "Try refreshing the page."}
-          />
-        ) : null}
+          {loadingState === "error" ? (
+            <EndSessionMessage
+              eyebrow="blocked"
+              headline="couldn't load this one."
+              body={submitError || "Try refreshing the page."}
+            />
+          ) : null}
 
-        {loadingState === "ready" && session ? (
-          <form noValidate onSubmit={handleSubmit} className="py-8 sm:py-12">
-            <header className="grid gap-6 border-b border-[var(--line)] pb-8 lg:grid-cols-[1fr_auto] lg:items-end">
-              <div>
-                <p className="font-mono text-sm uppercase tracking-[0.18em] text-[var(--terracotta)]">
-                  {"♦"} {isEditing ? "edit values" : "final count"}
-                </p>
-                <h1 className="mt-4 text-5xl font-semibold leading-none tracking-normal sm:text-7xl">
-                  {session.name || "poker night."}
-                </h1>
-                <p className="mt-5 max-w-2xl text-base leading-7 text-[var(--ink-soft)] sm:text-lg">
-                  Adjust buy-ins if the table memory was off. Then enter final
-                  chips in rupees.
-                </p>
-              </div>
+          {loadingState === "ready" && session ? (
+            <form
+              id="end-session-form"
+              noValidate
+              onSubmit={handleSubmit}
+              className="py-8 sm:py-12"
+            >
+              <header className="grid gap-6 border-b border-[var(--line)] pb-8 lg:grid-cols-[1fr_auto] lg:items-end">
+                <div>
+                  <p className="font-mono text-sm uppercase tracking-[0.18em] text-[var(--terracotta)]">
+                    {"♦"} {isEditing ? "edit values" : "final count"}
+                  </p>
+                  <h1 className="mt-4 text-5xl font-semibold leading-none tracking-normal sm:text-7xl">
+                    {session.name || "poker night."}
+                  </h1>
+                  <p className="mt-5 max-w-2xl text-base leading-7 text-[var(--ink-soft)] sm:text-lg">
+                    Adjust buy-ins if the table memory was off. Then enter final
+                    chips in rupees.
+                  </p>
+                </div>
 
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:min-w-[460px]">
-                <Stat label="buy-in" value={formatCurrency(session.buy_in_amount)} />
-                <Stat label="buy-ins" value={String(totalBuyIns)} />
-                <Stat label="table bank" value={formatCurrency(tableBank)} />
-              </div>
-            </header>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:min-w-[460px]">
+                  <Stat label="buy-in" value={formatCurrency(session.buy_in_amount)} />
+                  <Stat label="buy-ins" value={String(totalBuyIns)} />
+                  <Stat label="table bank" value={formatCurrency(tableBank)} />
+                </div>
+              </header>
 
-            <div className="mt-6 space-y-4">
-              {players.map((player) => {
-                const buyIns = Number(player.buyIns);
-                const playerInFor =
-                  Number.isInteger(buyIns) && buyIns > 0
-                    ? buyIns * session.buy_in_amount
-                    : 0;
-                const errors = fieldErrors[player.id] || {};
+              <div className="mt-6 space-y-4">
+                {players.map((player) => {
+                  const buyIns = Number(player.buyIns);
+                  const playerInFor =
+                    Number.isInteger(buyIns) && buyIns > 0
+                      ? buyIns * session.buy_in_amount
+                      : 0;
+                  const errors = fieldErrors[player.id] || {};
 
-                return (
-                  <article
-                    key={player.id}
-                    className="border border-[var(--line)] bg-[#fffaf0] p-5 shadow-[0_18px_60px_rgba(36,25,19,0.07)]"
-                  >
-                    <div className="grid gap-4 lg:grid-cols-[1fr_160px_220px] lg:items-start">
-                      <div className="min-w-0">
-                        <h2 className="truncate text-2xl font-semibold leading-tight">
-                          {player.name}
-                        </h2>
-                        <p className="mt-2 font-mono text-xs uppercase tracking-[0.16em] text-[var(--ink-soft)]">
-                          in for {formatCurrency(playerInFor)}
-                        </p>
-                      </div>
-
-                      <div>
-                        <label
-                          htmlFor={`buy-ins-${player.id}`}
-                          className="font-mono text-xs uppercase tracking-[0.16em] text-[var(--ink-soft)]"
-                        >
-                          buy-ins.
-                        </label>
-                        <input
-                          id={`buy-ins-${player.id}`}
-                          inputMode="numeric"
-                          min="1"
-                          step="1"
-                          type="number"
-                          value={player.buyIns}
-                          onChange={(event) =>
-                            updatePlayerField(
-                              player.id,
-                              "buyIns",
-                              event.target.value,
-                            )
-                          }
-                          className="mt-2 h-12 w-full border border-[var(--line)] bg-background px-3 text-base outline-none transition focus:border-[var(--terracotta)]"
-                        />
-                        {errors.buyIns ? (
-                          <p className="mt-2 text-sm text-[var(--terracotta)]">
-                            {errors.buyIns}
+                  return (
+                    <article
+                      key={player.id}
+                      className="border border-[var(--line)] bg-[#fffaf0] p-5 shadow-[0_18px_60px_rgba(36,25,19,0.07)]"
+                    >
+                      <div className="grid gap-4 lg:grid-cols-[1fr_160px_220px] lg:items-start">
+                        <div className="min-w-0">
+                          <h2 className="truncate text-2xl font-semibold leading-tight">
+                            {player.name}
+                          </h2>
+                          <p className="mt-2 font-mono text-xs uppercase tracking-[0.16em] text-[var(--ink-soft)]">
+                            in for {formatCurrency(playerInFor)}
                           </p>
-                        ) : null}
-                      </div>
+                        </div>
 
-                      <div>
-                        <label
-                          htmlFor={`final-chips-${player.id}`}
-                          className="font-mono text-xs uppercase tracking-[0.16em] text-[var(--ink-soft)]"
-                        >
-                          final chips.
-                        </label>
-                        <div className="mt-2 flex h-12 items-center border border-[var(--line)] bg-background px-3 focus-within:border-[var(--terracotta)]">
-                          <span className="pr-2 font-mono text-sm text-[var(--ink-soft)]">
-                            {"₹"}
-                          </span>
+                        <div>
+                          <label
+                            htmlFor={`buy-ins-${player.id}`}
+                            className="font-mono text-xs uppercase tracking-[0.16em] text-[var(--ink-soft)]"
+                          >
+                            buy-ins.
+                          </label>
                           <input
-                            id={`final-chips-${player.id}`}
+                            id={`buy-ins-${player.id}`}
                             inputMode="numeric"
-                            min="0"
+                            min="1"
                             step="1"
                             type="number"
-                            value={player.finalChips}
+                            value={player.buyIns}
                             onChange={(event) =>
                               updatePlayerField(
                                 player.id,
-                                "finalChips",
+                                "buyIns",
                                 event.target.value,
                               )
                             }
-                            className="h-full w-full min-w-0 bg-transparent text-base outline-none"
+                            className="mt-2 h-12 w-full border border-[var(--line)] bg-background px-3 text-base outline-none transition focus:border-[var(--terracotta)]"
                           />
+                          {errors.buyIns ? (
+                            <p className="mt-2 text-sm text-[var(--terracotta)]">
+                              {errors.buyIns}
+                            </p>
+                          ) : null}
                         </div>
-                        {errors.finalChips ? (
-                          <p className="mt-2 text-sm text-[var(--terracotta)]">
-                            {errors.finalChips}
-                          </p>
-                        ) : null}
+
+                        <div>
+                          <label
+                            htmlFor={`final-chips-${player.id}`}
+                            className="font-mono text-xs uppercase tracking-[0.16em] text-[var(--ink-soft)]"
+                          >
+                            final chips.
+                          </label>
+                          <div className="mt-2 flex h-12 items-center border border-[var(--line)] bg-background px-3 focus-within:border-[var(--terracotta)]">
+                            <span className="pr-2 font-mono text-sm text-[var(--ink-soft)]">
+                              {"₹"}
+                            </span>
+                            <input
+                              id={`final-chips-${player.id}`}
+                              inputMode="numeric"
+                              min="0"
+                              step="1"
+                              type="number"
+                              value={player.finalChips}
+                              onChange={(event) =>
+                                updatePlayerField(
+                                  player.id,
+                                  "finalChips",
+                                  event.target.value,
+                                )
+                              }
+                              className="h-full w-full min-w-0 bg-transparent text-base outline-none"
+                            />
+                          </div>
+                          {errors.finalChips ? (
+                            <p className="mt-2 text-sm text-[var(--terracotta)]">
+                              {errors.finalChips}
+                            </p>
+                          ) : null}
+                        </div>
                       </div>
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
+                    </article>
+                  );
+                })}
+              </div>
 
-            {submitError ? (
-              <p className="mt-5 border border-[var(--terracotta)] bg-[#fffaf0] p-3 text-sm text-[var(--terracotta)]">
-                {submitError}
-              </p>
-            ) : null}
+              {submitError ? (
+                <p className="mt-5 border border-[var(--terracotta)] bg-[#fffaf0] p-3 text-sm text-[var(--terracotta)]">
+                  {submitError}
+                </p>
+              ) : null}
 
-            <div className="mt-8 grid gap-3 border-t border-[var(--line)] pt-6 sm:grid-cols-[1fr_auto] sm:items-center">
-              <Link
-                href={
-                  isEditing
-                    ? `/session/${sessionId}/summary`
-                    : `/session/${sessionId}`
-                }
-                className="inline-flex h-12 items-center justify-center border border-[var(--line)] px-5 font-mono text-xs uppercase tracking-[0.12em] text-[var(--ink-soft)] transition hover:border-[var(--terracotta)] hover:text-foreground"
-              >
-                cancel
-              </Link>
-              <button
-                type="submit"
-                disabled={isSaving}
-                className="h-12 border border-foreground bg-foreground px-5 font-mono text-xs uppercase tracking-[0.12em] text-background transition enabled:hover:bg-[var(--terracotta)] disabled:cursor-wait disabled:opacity-60"
-              >
-                {isSaving
-                  ? "saving..."
-                  : isEditing
-                    ? "save changes."
-                    : "save & end session."}
-              </button>
+              <div className="mt-8 border-t border-[var(--line)] pt-6">
+                <Link
+                  href={
+                    isEditing
+                      ? `/session/${sessionId}/summary`
+                      : `/session/${sessionId}`
+                  }
+                  className="inline-flex h-10 items-center border border-[var(--line)] px-5 font-mono text-xs uppercase tracking-[0.12em] text-[var(--ink-soft)] transition hover:border-[var(--terracotta)] hover:text-foreground"
+                >
+                  cancel
+                </Link>
+              </div>
+
+              {/* Spacer so the last input isn't hidden behind the sticky bar */}
+              <div aria-hidden="true" className="h-48 lg:h-20" />
+            </form>
+          ) : null}
+        </section>
+      </main>
+
+      {/* Sticky delta bar — fixed to bottom, outside <main> to avoid overflow clipping */}
+      {loadingState === "ready" && session && (isHost || delta !== null) ? (
+        <div className="fixed bottom-0 left-0 right-0 z-10 border-t border-[var(--line)] bg-[#fffaf0] shadow-[0_-4px_20px_rgba(36,25,19,0.08)]">
+          <div className="mx-auto max-w-5xl px-5 sm:px-10">
+            <div className="flex flex-col gap-3 py-3 lg:flex-row lg:items-center lg:justify-between lg:gap-6 lg:py-4">
+              <div className="min-w-0 flex-1">
+                {delta === null ? null : delta === 0 ? (
+                  <p className="font-mono text-xs uppercase tracking-[0.16em] text-green-700">
+                    ✓ chip counts match
+                  </p>
+                ) : (
+                  <p className="text-sm leading-5 text-[var(--terracotta)]">
+                    {delta > 0
+                      ? `Chip counts are over by ${formatCurrency(Math.abs(delta))}. Players counted ${formatCurrency(totalFinalChips)} but table bank is ${formatCurrency(tableBank)}.`
+                      : `Chip counts are short by ${formatCurrency(Math.abs(delta))}. Players counted ${formatCurrency(totalFinalChips)} but table bank is ${formatCurrency(tableBank)}.`}
+                  </p>
+                )}
+              </div>
+
+              {isHost ? (
+                <div className="flex shrink-0 flex-wrap items-center gap-2">
+                  {delta !== null &&
+                  delta !== 0 &&
+                  tableBank > 0 &&
+                  Math.abs(delta) / tableBank <= 0.5 ? (
+                    <button
+                      type="button"
+                      onClick={handleDivideEqually}
+                      className="h-10 border border-[var(--line)] px-4 font-mono text-xs uppercase tracking-[0.12em] text-[var(--ink-soft)] transition hover:border-[var(--terracotta)] hover:text-foreground"
+                    >
+                      divide {formatCurrency(Math.abs(delta))} equally
+                    </button>
+                  ) : null}
+                  {delta !== null && delta !== 0 ? (
+                    <button
+                      type="button"
+                      onClick={handleScrollToBuyIns}
+                      className="h-10 border border-[var(--line)] px-4 font-mono text-xs uppercase tracking-[0.12em] text-[var(--ink-soft)] transition hover:border-[var(--terracotta)] hover:text-foreground"
+                    >
+                      edit buy-ins
+                    </button>
+                  ) : null}
+                  <button
+                    type="submit"
+                    form="end-session-form"
+                    disabled={isSaving}
+                    className="h-10 border border-foreground bg-foreground px-4 font-mono text-xs uppercase tracking-[0.12em] text-background transition enabled:hover:bg-[var(--terracotta)] disabled:cursor-wait disabled:opacity-60"
+                  >
+                    {isSaving
+                      ? "saving..."
+                      : isEditing
+                        ? "save changes."
+                        : "save & end session."}
+                  </button>
+                </div>
+              ) : null}
             </div>
-          </form>
-        ) : null}
-      </section>
-    </main>
+          </div>
+        </div>
+      ) : null}
+    </>
   );
 }
 
