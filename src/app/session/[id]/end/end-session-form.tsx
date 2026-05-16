@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { getStoredPin } from "@/lib/pin-auth";
 
 type Session = {
   id: string;
@@ -94,6 +95,28 @@ export function EndSessionForm({ sessionId }: { sessionId: string }) {
       if (sessionError || !sessionData) {
         setLoadingState("missing");
         return;
+      }
+
+      // Check PIN requirement and redirect if not authenticated
+      const { data: hasPinData } = await supabase.rpc("session_has_pin", {
+        p_session_id: sessionId,
+      });
+
+      if (!isMounted) {
+        return;
+      }
+
+      if (hasPinData) {
+        const storedPin = getStoredPin(sessionId);
+        if (!storedPin) {
+          // Not authenticated — redirect to the right place
+          if (sessionData.status === "ended") {
+            router.replace(`/session/${sessionId}/summary`);
+          } else {
+            router.replace(`/session/${sessionId}`);
+          }
+          return;
+        }
       }
 
       if (sessionData.status === "ended") {
@@ -197,15 +220,16 @@ export function EndSessionForm({ sessionId }: { sessionId: string }) {
 
     setIsSaving(true);
 
+    const storedPin = getStoredPin(sessionId);
+
     for (const player of players) {
-      const { error } = await supabase
-        .from("players")
-        .update({
-          final_chips: Number(player.finalChips),
-          total_buy_ins: Number(player.buyIns),
-        })
-        .eq("id", player.id)
-        .eq("session_id", sessionId);
+      const { error } = await supabase.rpc("update_player_with_pin", {
+        p_player_id: player.id,
+        p_session_id: sessionId,
+        p_pin: storedPin,
+        p_total_buy_ins: Number(player.buyIns),
+        p_final_chips: Number(player.finalChips),
+      });
 
       if (error) {
         setSubmitError("couldn't save the chip counts.");
@@ -214,10 +238,10 @@ export function EndSessionForm({ sessionId }: { sessionId: string }) {
       }
     }
 
-    const { error: sessionError } = await supabase
-      .from("sessions")
-      .update({ status: "ended", ended_at: new Date().toISOString() })
-      .eq("id", sessionId);
+    const { error: sessionError } = await supabase.rpc("end_session_with_pin", {
+      p_session_id: sessionId,
+      p_pin: storedPin,
+    });
 
     if (sessionError) {
       setSubmitError("couldn't end the session.");
@@ -265,7 +289,7 @@ export function EndSessionForm({ sessionId }: { sessionId: string }) {
             <header className="grid gap-6 border-b border-[var(--line)] pb-8 lg:grid-cols-[1fr_auto] lg:items-end">
               <div>
                 <p className="font-mono text-sm uppercase tracking-[0.18em] text-[var(--terracotta)]">
-                  {"\u2666"} {isEditing ? "edit values" : "final count"}
+                  {"♦"} {isEditing ? "edit values" : "final count"}
                 </p>
                 <h1 className="mt-4 text-5xl font-semibold leading-none tracking-normal sm:text-7xl">
                   {session.name || "poker night."}
@@ -346,7 +370,7 @@ export function EndSessionForm({ sessionId }: { sessionId: string }) {
                         </label>
                         <div className="mt-2 flex h-12 items-center border border-[var(--line)] bg-background px-3 focus-within:border-[var(--terracotta)]">
                           <span className="pr-2 font-mono text-sm text-[var(--ink-soft)]">
-                            {"\u20B9"}
+                            {"₹"}
                           </span>
                           <input
                             id={`final-chips-${player.id}`}

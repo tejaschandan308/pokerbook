@@ -4,23 +4,34 @@ import type { FormEvent } from "react";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { storePin } from "@/lib/pin-auth";
 
 const MIN_PLAYERS = 2;
 const MAX_PLAYERS = 10;
 
 type FormErrors = {
   buyInAmount?: string;
+  pin?: string;
   players?: string;
   submit?: string;
+};
+
+type CreatedSession = {
+  id: string;
+  pin: string;
 };
 
 export function NewSessionForm() {
   const router = useRouter();
   const [buyInAmount, setBuyInAmount] = useState("500");
   const [sessionName, setSessionName] = useState("");
+  const [pin, setPin] = useState("");
   const [players, setPlayers] = useState(["", ""]);
   const [errors, setErrors] = useState<FormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [createdSession, setCreatedSession] = useState<CreatedSession | null>(
+    null,
+  );
 
   const canAddPlayer = players.length < MAX_PLAYERS;
 
@@ -55,6 +66,14 @@ export function NewSessionForm() {
     );
   }
 
+  function updatePin(value: string) {
+    const digits = value.replace(/\D/g, "").slice(0, 4);
+    setPin(digits);
+    if (errors.pin) {
+      setErrors((e) => ({ ...e, pin: undefined }));
+    }
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -70,6 +89,10 @@ export function NewSessionForm() {
 
     if (!Number.isInteger(parsedBuyIn) || parsedBuyIn <= 0) {
       nextErrors.buyInAmount = "buy-in has to be positive.";
+    }
+
+    if (pin.length !== 4) {
+      nextErrors.pin = "PIN must be exactly 4 digits.";
     }
 
     if (trimmedPlayers.length < MIN_PLAYERS) {
@@ -94,6 +117,7 @@ export function NewSessionForm() {
       .insert({
         name: sessionName.trim() || null,
         buy_in_amount: parsedBuyIn,
+        host_pin: pin,
       })
       .select("id")
       .single();
@@ -119,7 +143,37 @@ export function NewSessionForm() {
       return;
     }
 
-    router.push(`/session/${session.id}`);
+    setCreatedSession({ id: session.id, pin });
+  }
+
+  if (createdSession) {
+    return (
+      <div className="min-w-0 border border-[var(--line)] bg-[#fffaf0] p-5 shadow-[0_18px_60px_rgba(36,25,19,0.08)] sm:p-7">
+        <p className="font-mono text-xs uppercase tracking-[0.16em] text-[var(--table-green)]">
+          session created.
+        </p>
+        <h2 className="mt-4 text-3xl font-semibold">your host PIN.</h2>
+        <div className="mt-5 flex items-center justify-center border border-[var(--line)] bg-background py-7">
+          <span className="font-mono text-5xl tracking-[0.4em] text-foreground">
+            {createdSession.pin}
+          </span>
+        </div>
+        <p className="mt-4 text-sm leading-6 text-[var(--ink-soft)]">
+          Share this PIN with anyone you want to give edit access. Anyone
+          without the PIN can view but not edit.
+        </p>
+        <button
+          type="button"
+          onClick={() => {
+            storePin(createdSession.id, createdSession.pin);
+            router.push(`/session/${createdSession.id}`);
+          }}
+          className="mt-6 h-12 w-full border border-foreground bg-foreground px-5 font-mono text-sm uppercase tracking-[0.12em] text-background transition hover:bg-[var(--terracotta)]"
+        >
+          open session.
+        </button>
+      </div>
+    );
   }
 
   return (
@@ -137,7 +191,7 @@ export function NewSessionForm() {
           </label>
           <div className="mt-2 flex h-12 items-center border border-[var(--line)] bg-background px-3 focus-within:border-[var(--terracotta)]">
             <span className="pr-2 font-mono text-sm text-[var(--ink-soft)]">
-              {"\u20B9"}
+              {"₹"}
             </span>
             <input
               id="buy-in-amount"
@@ -174,6 +228,35 @@ export function NewSessionForm() {
             placeholder="Saturday at Aman's"
             className="mt-2 h-12 w-full border border-[var(--line)] bg-background px-3 text-base outline-none transition placeholder:text-[var(--ink-soft)]/55 focus:border-[var(--terracotta)]"
           />
+        </div>
+
+        <div>
+          <label
+            htmlFor="host-pin"
+            className="font-mono text-xs uppercase tracking-[0.16em] text-[var(--ink-soft)]"
+          >
+            host PIN
+          </label>
+          <input
+            id="host-pin"
+            name="host-pin"
+            type="text"
+            inputMode="numeric"
+            maxLength={4}
+            pattern="[0-9]*"
+            value={pin}
+            onChange={(event) => updatePin(event.target.value)}
+            placeholder="4-digit PIN"
+            className="mt-2 h-12 w-full border border-[var(--line)] bg-background px-3 text-base tracking-[0.2em] outline-none transition placeholder:tracking-normal placeholder:text-[var(--ink-soft)]/55 focus:border-[var(--terracotta)]"
+          />
+          <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--ink-soft)]">
+            share this with players you want to give edit access
+          </p>
+          {errors.pin ? (
+            <p className="mt-2 text-sm text-[var(--terracotta)]">
+              {errors.pin}
+            </p>
+          ) : null}
         </div>
 
         <div>

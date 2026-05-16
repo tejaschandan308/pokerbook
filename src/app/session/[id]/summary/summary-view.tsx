@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { computeSettlements } from "@/lib/settlements";
 import type { Settlement } from "@/lib/settlements";
+import { getStoredPin } from "@/lib/pin-auth";
 
 type Session = {
   id: string;
@@ -101,6 +102,7 @@ export function SummaryView({ sessionId }: { sessionId: string }) {
   const [shareState, setShareState] = useState<"idle" | "shared" | "copied">(
     "idle",
   );
+  const [isHost, setIsHost] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -131,6 +133,15 @@ export function SummaryView({ sessionId }: { sessionId: string }) {
       if (sessionData.status === "active") {
         router.replace(`/session/${sessionId}`);
         return;
+      }
+
+      // Determine host status for conditional edit link
+      const { data: hasPinData } = await supabase.rpc("session_has_pin", {
+        p_session_id: sessionId,
+      });
+      if (!isMounted) return;
+      if (!hasPinData || getStoredPin(sessionId)) {
+        setIsHost(true);
       }
 
       const { data: playerData, error: playersError } = await supabase
@@ -405,15 +416,17 @@ export function SummaryView({ sessionId }: { sessionId: string }) {
               </div>
             </div>
 
-            {/* Edit values */}
-            <div className="mt-6 flex justify-end">
-              <Link
-                href={`/session/${sessionId}/end`}
-                className="inline-flex h-10 items-center border border-[var(--line)] px-4 font-mono text-xs uppercase tracking-[0.12em] text-[var(--ink-soft)] transition hover:border-[var(--terracotta)] hover:text-foreground"
-              >
-                edit values.
-              </Link>
-            </div>
+            {/* Edit values — host only */}
+            {isHost ? (
+              <div className="mt-6 flex justify-end">
+                <Link
+                  href={`/session/${sessionId}/end`}
+                  className="inline-flex h-10 items-center border border-[var(--line)] px-4 font-mono text-xs uppercase tracking-[0.12em] text-[var(--ink-soft)] transition hover:border-[var(--terracotta)] hover:text-foreground"
+                >
+                  edit values.
+                </Link>
+              </div>
+            ) : null}
 
             {/* Settlements */}
             <div className="mt-6 border-t border-[var(--line)] pt-8">
