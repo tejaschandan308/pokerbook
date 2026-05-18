@@ -21,6 +21,18 @@ type CreatedSession = {
   pin: string;
 };
 
+/* ─── Shared style constants ─────────────────────────────────────────────── */
+
+const labelStyle =
+  "font-mono text-[10px] uppercase tracking-[0.16em] text-[var(--ink-mute)]";
+
+const inputStyle =
+  "h-12 w-full border border-[var(--rule)] bg-[var(--bg-elev)] px-3 text-base text-[var(--ink)] outline-none transition placeholder:text-[var(--ink-mute)]/60 focus:border-[var(--ink)]";
+
+const errorStyle = "mt-2 text-sm text-[var(--terra)]";
+
+/* ─── Component ──────────────────────────────────────────────────────────── */
+
 export function NewSessionForm() {
   const router = useRouter();
   const [buyInAmount, setBuyInAmount] = useState("500");
@@ -146,29 +158,60 @@ export function NewSessionForm() {
     setCreatedSession({ id: session.id, pin });
   }
 
+  /* ── Session created — PIN reveal ── */
   if (createdSession) {
     return (
-      <div className="min-w-0 border border-[var(--line)] bg-[#fffaf0] p-5 shadow-[0_18px_60px_rgba(36,25,19,0.08)] sm:p-7">
-        <p className="font-mono text-xs uppercase tracking-[0.16em] text-[var(--table-green)]">
+      <div className="min-w-0">
+        <p className={labelStyle} style={{ color: "var(--felt)" }}>
           session created.
         </p>
-        <h2 className="mt-4 text-3xl font-semibold">your host PIN.</h2>
-        <div className="mt-5 flex items-center justify-center border border-[var(--line)] bg-background py-7">
-          <span className="font-mono text-5xl tracking-[0.4em] text-foreground">
+
+        <h2
+          style={{
+            fontFamily: "var(--font-instrument-serif), serif",
+            fontSize: 28,
+            fontWeight: 400,
+            color: "var(--ink)",
+            marginTop: 16,
+            letterSpacing: "-0.01em",
+          }}
+        >
+          your host PIN.
+        </h2>
+
+        <div
+          className="mt-5 flex items-center justify-center border border-[var(--rule)] bg-[var(--bg-card)] py-7"
+        >
+          <span
+            className="tnum"
+            style={{
+              fontFamily:
+                "var(--font-jetbrains-mono), ui-monospace, monospace",
+              fontSize: 48,
+              fontWeight: 500,
+              letterSpacing: "0.4em",
+              color: "var(--ink)",
+            }}
+          >
             {createdSession.pin}
           </span>
         </div>
-        <p className="mt-4 text-sm leading-6 text-[var(--ink-soft)]">
+
+        <p
+          className="mt-4 text-sm leading-6"
+          style={{ color: "var(--ink-soft)" }}
+        >
           Share this PIN with anyone you want to give edit access. Anyone
           without the PIN can view but not edit.
         </p>
+
         <button
           type="button"
           onClick={() => {
             storePin(createdSession.id, createdSession.pin);
             router.push(`/session/${createdSession.id}`);
           }}
-          className="mt-6 h-12 w-full border border-foreground bg-foreground px-5 font-mono text-sm uppercase tracking-[0.12em] text-background transition hover:bg-[var(--terracotta)]"
+          className="btn-primary mt-6 w-full justify-center"
         >
           open session.
         </button>
@@ -176,21 +219,23 @@ export function NewSessionForm() {
     );
   }
 
+  /* ── New session form ── */
   return (
-    <form
-      onSubmit={handleSubmit}
-      className="min-w-0 border border-[var(--line)] bg-[#fffaf0] p-5 shadow-[0_18px_60px_rgba(36,25,19,0.08)] sm:p-7"
-    >
+    <form onSubmit={handleSubmit} className="min-w-0">
       <div className="space-y-5">
+
+        {/* Buy-in amount */}
         <div>
-          <label
-            htmlFor="buy-in-amount"
-            className="font-mono text-xs uppercase tracking-[0.16em] text-[var(--ink-soft)]"
-          >
+          <label htmlFor="buy-in-amount" className={labelStyle}>
             buy-in amount
           </label>
-          <div className="mt-2 flex h-12 items-center border border-[var(--line)] bg-background px-3 focus-within:border-[var(--terracotta)]">
-            <span className="pr-2 font-mono text-sm text-[var(--ink-soft)]">
+          <div
+            className="mt-2 flex h-12 items-center border border-[var(--rule)] bg-[var(--bg-elev)] px-3 focus-within:border-[var(--ink)] transition"
+          >
+            <span
+              className="pr-2 font-mono text-sm"
+              style={{ color: "var(--ink-mute)" }}
+            >
               {"₹"}
             </span>
             <input
@@ -202,21 +247,17 @@ export function NewSessionForm() {
               type="number"
               value={buyInAmount}
               onChange={(event) => setBuyInAmount(event.target.value)}
-              className="h-full w-full bg-transparent text-base outline-none"
+              className="h-full w-full bg-transparent text-base text-[var(--ink)] outline-none placeholder:text-[var(--ink-mute)]/60"
             />
           </div>
           {errors.buyInAmount ? (
-            <p className="mt-2 text-sm text-[var(--terracotta)]">
-              {errors.buyInAmount}
-            </p>
+            <p className={errorStyle}>{errors.buyInAmount}</p>
           ) : null}
         </div>
 
+        {/* Session name */}
         <div>
-          <label
-            htmlFor="session-name"
-            className="font-mono text-xs uppercase tracking-[0.16em] text-[var(--ink-soft)]"
-          >
+          <label htmlFor="session-name" className={labelStyle}>
             session name (optional)
           </label>
           <input
@@ -226,15 +267,13 @@ export function NewSessionForm() {
             value={sessionName}
             onChange={(event) => setSessionName(event.target.value)}
             placeholder="Saturday at Aman's"
-            className="mt-2 h-12 w-full border border-[var(--line)] bg-background px-3 text-base outline-none transition placeholder:text-[var(--ink-soft)]/55 focus:border-[var(--terracotta)]"
+            className={`mt-2 ${inputStyle}`}
           />
         </div>
 
+        {/* Host PIN */}
         <div>
-          <label
-            htmlFor="host-pin"
-            className="font-mono text-xs uppercase tracking-[0.16em] text-[var(--ink-soft)]"
-          >
+          <label htmlFor="host-pin" className={labelStyle}>
             host PIN
           </label>
           <input
@@ -247,24 +286,19 @@ export function NewSessionForm() {
             value={pin}
             onChange={(event) => updatePin(event.target.value)}
             placeholder="4-digit PIN"
-            className="mt-2 h-12 w-full border border-[var(--line)] bg-background px-3 text-base tracking-[0.2em] outline-none transition placeholder:tracking-normal placeholder:text-[var(--ink-soft)]/55 focus:border-[var(--terracotta)]"
+            className={`mt-2 tracking-[0.2em] placeholder:tracking-normal ${inputStyle}`}
           />
-          <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--ink-soft)]">
+          <p className={`mt-1 ${labelStyle}`}>
             share this with players you want to give edit access
           </p>
-          {errors.pin ? (
-            <p className="mt-2 text-sm text-[var(--terracotta)]">
-              {errors.pin}
-            </p>
-          ) : null}
+          {errors.pin ? <p className={errorStyle}>{errors.pin}</p> : null}
         </div>
 
+        {/* Players */}
         <div>
           <div className="flex items-center justify-between gap-3">
-            <label className="font-mono text-xs uppercase tracking-[0.16em] text-[var(--ink-soft)]">
-              players
-            </label>
-            <span className="font-mono text-xs text-[var(--ink-soft)]">
+            <label className={labelStyle}>players</label>
+            <span className={`${labelStyle} tnum`}>
               {filledPlayerCount}/{players.length} named
             </span>
           </div>
@@ -280,14 +314,14 @@ export function NewSessionForm() {
                     updatePlayerName(index, event.target.value)
                   }
                   placeholder={`player ${index + 1}`}
-                  className="h-12 min-w-0 flex-1 border border-[var(--line)] bg-background px-3 text-base outline-none transition placeholder:text-[var(--ink-soft)]/55 focus:border-[var(--terracotta)]"
+                  className={`min-w-0 flex-1 ${inputStyle}`}
                 />
                 <button
                   type="button"
                   onClick={() => removePlayer(index)}
                   disabled={players.length <= MIN_PLAYERS}
                   aria-label="remove player"
-                  className="flex h-12 w-11 shrink-0 items-center justify-center text-[var(--ink-soft)] transition enabled:hover:text-[var(--terracotta)] disabled:cursor-not-allowed disabled:opacity-40"
+                  className="flex h-12 w-11 shrink-0 items-center justify-center text-[var(--ink-mute)] transition enabled:hover:text-[var(--terra)] disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <svg
                     width="10"
@@ -306,16 +340,14 @@ export function NewSessionForm() {
           </div>
 
           {errors.players ? (
-            <p className="mt-2 text-sm text-[var(--terracotta)]">
-              {errors.players}
-            </p>
+            <p className={errorStyle}>{errors.players}</p>
           ) : null}
 
           <button
             type="button"
             onClick={addPlayer}
             disabled={!canAddPlayer}
-            className="mt-4 h-11 w-full border border-[var(--table-green)] px-4 font-mono text-xs uppercase tracking-[0.12em] text-[var(--table-green)] transition enabled:hover:bg-[var(--table-green)] enabled:hover:text-background disabled:cursor-not-allowed disabled:opacity-40"
+            className="mt-4 h-11 w-full border border-[var(--felt)] px-4 font-mono text-xs uppercase tracking-[0.12em] text-[var(--felt)] transition enabled:hover:bg-[var(--felt)] enabled:hover:text-[var(--bg)] disabled:cursor-not-allowed disabled:opacity-40"
           >
             add player.
           </button>
@@ -323,7 +355,7 @@ export function NewSessionForm() {
       </div>
 
       {errors.submit ? (
-        <p className="mt-5 text-sm text-[var(--terracotta)]">
+        <p className={errorStyle} style={{ marginTop: 20 }}>
           {errors.submit}
         </p>
       ) : null}
@@ -331,7 +363,7 @@ export function NewSessionForm() {
       <button
         type="submit"
         disabled={isSubmitting}
-        className="mt-6 h-12 w-full border border-foreground bg-foreground px-5 font-mono text-sm uppercase tracking-[0.12em] text-background transition enabled:hover:bg-[var(--terracotta)] disabled:cursor-wait disabled:opacity-60"
+        className="btn-primary mt-6 w-full justify-center disabled:cursor-wait disabled:opacity-60"
       >
         {isSubmitting ? "starting..." : "start session."}
       </button>

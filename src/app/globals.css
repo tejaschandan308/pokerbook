@@ -1,26 +1,180 @@
 @import "tailwindcss";
 
+/* ─── Design tokens — Felt Night (dark default) ─────────────────────────── */
 :root {
-  --background: #f5f1e8;
-  --foreground: #241913;
-  --terracotta: #c97b5c;
-  --table-green: #1f6f50;
-  --ink-soft: #6f625a;
-  --line: #decfbd;
+  /* backgrounds */
+  --bg: #142019;
+  --bg-elev: #1b2a22;
+  --bg-card: #20322a;
+  --bg-inset: #0e1812;
+
+  /* text */
+  --ink: #f2ead5;
+  --ink-2: #daceaf;
+  --ink-soft: #9cae9b;
+  --ink-mute: #6b7e6e;
+
+  /* dividers */
+  --rule: rgba(242, 234, 213, 0.10);
+  --rule-strong: rgba(242, 234, 213, 0.20);
+
+  /* accents */
+  --terra: #e09472;
+  --terra-deep: #b26c49;
+  --felt: #4f8262;
+  --felt-deep: #356548;
+  --red: #e76b5c;
+  --red-deep: #b33f31;
+  --gold: #ddb66a;
+
+  /* result colors */
+  --pos: #8bc79a;
+  --neg: #e76b5c;
+
+  /* chip palette */
+  --chip-a: #e09472;
+  --chip-b: #4f8262;
+  --chip-c: #0e1812;
+  --chip-d: #ddb66a;
 }
 
+/* ─── Tailwind v4 theme mapping ──────────────────────────────────────────── */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  /* legacy aliases so old bg-background / text-foreground classes resolve correctly */
+  --color-background: var(--bg);
+  --color-foreground: var(--ink);
+
+  --color-bg: var(--bg);
+  --color-bg-elev: var(--bg-elev);
+  --color-bg-card: var(--bg-card);
+  --color-bg-inset: var(--bg-inset);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-soft: var(--ink-soft);
+  --color-ink-mute: var(--ink-mute);
+  --color-terra: var(--terra);
+  --color-terra-deep: var(--terra-deep);
+  --color-felt: var(--felt);
+  --color-felt-deep: var(--felt-deep);
+  --color-gold: var(--gold);
+  --color-pos: var(--pos);
+  --color-neg: var(--neg);
+
   --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-mono: var(--font-jetbrains-mono);
+  --font-display: var(--font-instrument-serif);
 }
 
+/* ─── Base ───────────────────────────────────────────────────────────────── */
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background: var(--bg);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
 }
 
 ::selection {
-  background: color-mix(in srgb, var(--terracotta) 35%, transparent);
+  background: color-mix(in srgb, var(--terra) 35%, transparent);
+}
+
+/* ─── Felt motif gradient ────────────────────────────────────────────────── */
+.felt-motif {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at top right, color-mix(in oklch, var(--felt) 8%, transparent) 0%, transparent 50%),
+    radial-gradient(ellipse at bottom left, color-mix(in oklch, var(--terra) 6%, transparent) 0%, transparent 50%);
+  pointer-events: none;
+}
+
+/* ─── Home page responsive grid ─────────────────────────────────────────── */
+.home-hero {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 48px;
+  padding-top: 48px;
+}
+
+@media (min-width: 1024px) {
+  .home-hero {
+    grid-template-columns: 1.4fr 1fr;
+    gap: 80px;
+    align-items: center;
+    min-height: 540px;
+    padding-top: 80px;
+  }
+}
+
+/* ─── Primary action button / link ──────────────────────────────────────── */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--ink);
+  color: var(--bg);
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 18px 28px;
+  text-decoration: none;
+  border: 0;
+  cursor: pointer;
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+.btn-primary:hover { transform: translateY(-1px); }
+.btn-primary:active { transform: translateY(0); }
+
+/* ─── Terra / felt filled buttons ───────────────────────────────────────── */
+.btn-terra {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--terra);
+  color: var(--bg);
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 14px 22px;
+  text-decoration: none;
+  border: 0;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+.btn-terra:hover { background: var(--terra-deep); transform: translateY(-1px); }
+.btn-terra:active { transform: translateY(0); }
+
+/* ─── Ghost / outline button — felt green ────────────────────────────────── */
+.btn-ghost-felt {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--felt);
+  color: var(--felt);
+  background: transparent;
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 8px 14px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.btn-ghost-felt:hover { background: var(--felt); color: var(--bg); }
+
+/* ─── Wordmark link (header nav) ────────────────────────────────────────── */
+.wordmark-link {
+  color: var(--ink);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+.wordmark-link:hover { color: var(--terra); }
+
+/* ─── Tnum (tabular figures) ─────────────────────────────────────────────── */
+.tnum {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
 }
