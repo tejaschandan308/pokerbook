@@ -926,7 +926,7 @@ export function EndSessionForm({ sessionId }: { sessionId: string }) {
                                   background: "transparent",
                                   border: "none",
                                   outline: "none",
-                                  fontSize: 15,
+                                  fontSize: 16,
                                   color: "var(--ink)",
                                 }}
                                 className="no-spin placeholder:text-[var(--ink-mute)]/50"
