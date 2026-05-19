@@ -1,5 +1,6 @@
 "use client";
 
+import { AnimatePresence, motion } from "framer-motion";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -7,6 +8,8 @@ import { supabase } from "@/lib/supabase";
 import { computeSettlements } from "@/lib/settlements";
 import type { Settlement } from "@/lib/settlements";
 import { getStoredPin } from "@/lib/pin-auth";
+import { AppHeader } from "@/components/ui/app-header";
+import { Eyebrow } from "@/components/ui/eyebrow";
 
 type Session = {
   id: string;
@@ -27,6 +30,8 @@ type PlayerPnL = Player & {
   inFor: number;
   net: number;
 };
+
+type PillType = "bigwin" | "cooked" | "even";
 
 const currencyFormatter = new Intl.NumberFormat("en-IN", {
   currency: "INR",
@@ -90,6 +95,168 @@ function buildShareText(
   return lines.join("\n");
 }
 
+// ─── Animation variants ───────────────────────────────────────────────────────
+
+const ease = [0.2, 0.7, 0.2, 1] as const;
+
+const containerVariants = {
+  hidden: {},
+  visible: { transition: { staggerChildren: 0.06 } },
+};
+
+const rowVariants = {
+  hidden: { opacity: 0, y: 14 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.25, ease } },
+};
+
+const settleVariants = {
+  hidden: { opacity: 0, y: 6 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.2, ease } },
+  exit: { opacity: 0, y: -4, transition: { duration: 0.15 } },
+};
+
+// ─── Status pill ──────────────────────────────────────────────────────────────
+
+function StatusPill({ pill }: { pill: PillType }) {
+  const config: Record<
+    PillType,
+    { label: string; color: string; bg: string; borderColor: string }
+  > = {
+    bigwin: {
+      label: "BIG WIN ▲",
+      color: "var(--pos)",
+      bg: "rgba(139,199,154,0.12)",
+      borderColor: "rgba(139,199,154,0.35)",
+    },
+    cooked: {
+      label: "COOKED ▼",
+      color: "var(--neg)",
+      bg: "rgba(231,107,92,0.12)",
+      borderColor: "rgba(231,107,92,0.35)",
+    },
+    even: {
+      label: "EVEN",
+      color: "var(--ink-mute)",
+      bg: "rgba(107,126,110,0.12)",
+      borderColor: "rgba(107,126,110,0.30)",
+    },
+  };
+  const { label, color, bg, borderColor } = config[pill];
+
+  return (
+    <motion.span
+      initial={{ opacity: 0, scale: 0.85 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ duration: 0.2, delay: 0.15 }}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        fontFamily: "var(--font-jetbrains-mono), ui-monospace, monospace",
+        fontSize: 9,
+        fontWeight: 500,
+        letterSpacing: "0.12em",
+        textTransform: "uppercase",
+        color,
+        background: bg,
+        border: `1px solid ${borderColor}`,
+        padding: "2px 7px",
+        lineHeight: 1.6,
+        whiteSpace: "nowrap",
+      }}
+    >
+      {label}
+    </motion.span>
+  );
+}
+
+// ─── Stat card ────────────────────────────────────────────────────────────────
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div
+      style={{
+        border: "1px solid var(--rule)",
+        background: "var(--bg-card)",
+        padding: "12px 14px",
+      }}
+    >
+      <p
+        style={{
+          fontFamily: "var(--font-jetbrains-mono), ui-monospace, monospace",
+          fontSize: 10,
+          fontWeight: 500,
+          letterSpacing: "0.16em",
+          textTransform: "uppercase",
+          color: "var(--ink-mute)",
+          margin: 0,
+        }}
+      >
+        {label}
+      </p>
+      <p
+        style={{
+          marginTop: 8,
+          fontFamily: "var(--font-jetbrains-mono), ui-monospace, monospace",
+          fontSize: 18,
+          fontWeight: 500,
+          color: "var(--ink)",
+          fontVariantNumeric: "tabular-nums",
+          margin: "8px 0 0",
+        }}
+      >
+        {value}
+      </p>
+    </div>
+  );
+}
+
+// ─── Loading/error message ────────────────────────────────────────────────────
+
+function SummaryMessage({
+  eyebrow,
+  headline,
+  body,
+}: {
+  eyebrow: string;
+  headline: string;
+  body?: string;
+}) {
+  return (
+    <div style={{ paddingTop: 80, paddingBottom: 80 }}>
+      <Eyebrow>{eyebrow}</Eyebrow>
+      <h1
+        style={{
+          marginTop: 20,
+          fontFamily: "var(--font-instrument-serif), serif",
+          fontStyle: "italic",
+          fontSize: "clamp(36px, 7vw, 64px)",
+          fontWeight: 400,
+          lineHeight: 0.95,
+          letterSpacing: "-0.02em",
+          color: "var(--ink)",
+        }}
+      >
+        {headline}
+      </h1>
+      {body ? (
+        <p
+          style={{
+            marginTop: 20,
+            maxWidth: 440,
+            fontSize: 16,
+            lineHeight: 1.6,
+            color: "var(--ink-soft)",
+          }}
+        >
+          {body}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+// ─── Main view ────────────────────────────────────────────────────────────────
+
 export function SummaryView({ sessionId }: { sessionId: string }) {
   const router = useRouter();
   const [session, setSession] = useState<Session | null>(null);
@@ -135,7 +302,6 @@ export function SummaryView({ sessionId }: { sessionId: string }) {
         return;
       }
 
-      // Determine host status for conditional edit link
       const { data: hasPinData } = await supabase.rpc("session_has_pin", {
         p_session_id: sessionId,
       });
@@ -210,6 +376,31 @@ export function SummaryView({ sessionId }: { sessionId: string }) {
       })),
     );
   }, [isBalanced, sortedPlayers]);
+
+  // Pill assignment: BIG WIN for top positive, COOKED for bottom negative,
+  // EVEN for exactly ₹0. No pills if only one player.
+  const pillMap = useMemo(() => {
+    const map = new Map<string, PillType>();
+    if (sortedPlayers.length <= 1) return map;
+
+    const positives = sortedPlayers.filter((p) => p.net > 0);
+    const negatives = sortedPlayers.filter((p) => p.net < 0);
+    const topNet =
+      positives.length > 0 ? Math.max(...positives.map((p) => p.net)) : null;
+    const bottomNet =
+      negatives.length > 0 ? Math.min(...negatives.map((p) => p.net)) : null;
+
+    for (const p of sortedPlayers) {
+      if (p.net === 0) {
+        map.set(p.id, "even");
+      } else if (topNet !== null && p.net === topNet) {
+        map.set(p.id, "bigwin");
+      } else if (bottomNet !== null && p.net === bottomNet) {
+        map.set(p.id, "cooked");
+      }
+    }
+    return map;
+  }, [sortedPlayers]);
 
   const byPayer = useMemo(() => {
     const map = new Map<
@@ -286,320 +477,770 @@ export function SummaryView({ sessionId }: { sessionId: string }) {
   }
 
   return (
-    <main className="min-h-screen overflow-x-hidden bg-background px-5 py-6 text-foreground sm:px-10 sm:py-8">
-      <section className="mx-auto w-full max-w-5xl">
-        <nav className="flex items-center justify-between gap-4 border-b border-[var(--line)] pb-5 font-mono text-xs uppercase tracking-[0.18em] text-[var(--ink-soft)]">
-          <Link href="/" className="transition hover:text-[var(--terracotta)]">
-            pokerbook
-          </Link>
-          <span className="text-[var(--table-green)]">ended</span>
-        </nav>
-
-        {loadingState === "loading" ? (
-          <SummaryMessage eyebrow="loading" headline="counting the chips." />
-        ) : null}
-
-        {loadingState === "missing" ? (
-          <SummaryMessage
-            eyebrow="not found"
-            headline="no table here."
-            body="Check the link and try again."
-          />
-        ) : null}
-
-        {loadingState === "error" ? (
-          <SummaryMessage
-            eyebrow="blocked"
-            headline="couldn't load this one."
-            body={errorMessage || "Try refreshing the page."}
-          />
-        ) : null}
-
-        {loadingState === "ready" && session ? (
-          <div className="py-8 sm:py-12">
-            <header className="grid gap-6 border-b border-[var(--line)] pb-8 lg:grid-cols-[1fr_auto] lg:items-end">
-              <div>
-                <p className="font-mono text-sm uppercase tracking-[0.18em] text-[var(--table-green)]">
-                  {"♣"} session ended
-                </p>
-                <h1 className="mt-4 text-5xl font-semibold leading-none tracking-normal sm:text-7xl">
-                  {session.name || "poker night."}
-                </h1>
-                {session.ended_at ? (
-                  <p className="mt-4 font-mono text-xs uppercase tracking-[0.16em] text-[var(--ink-soft)]">
-                    {formatDate(session.ended_at)}
-                  </p>
-                ) : null}
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:min-w-[460px]">
-                <Stat label="total buy-ins" value={String(totalBuyIns)} />
-                <Stat label="table bank" value={formatCurrency(tableBank)} />
-                <Stat
-                  label="final chips"
-                  value={
-                    hasMissingChips ? "—" : formatCurrency(totalFinalChips)
-                  }
-                />
-              </div>
-            </header>
-
-            {!isBalanced ? (
-              <p className="mt-5 border border-[var(--terracotta)] bg-[#fffaf0] p-3 text-sm text-[var(--terracotta)]">
-                {hasMissingChips
-                  ? "some chip values are missing — "
-                  : "math doesn't add up — "}
-                <Link
-                  href={`/session/${sessionId}/end`}
-                  className="underline underline-offset-2"
+    <main
+      style={{
+        minHeight: "100vh",
+        background: "var(--bg)",
+        color: "var(--ink)",
+        overflowX: "hidden",
+      }}
+    >
+      <div
+        style={{ maxWidth: 1100, margin: "0 auto", padding: "0 20px 80px" }}
+        className="sm:px-10"
+      >
+        <div style={{ position: "relative" }}>
+          <div className="felt-motif" />
+          <div style={{ position: "relative", zIndex: 1 }}>
+            <AppHeader
+              right={
+                <span
+                  style={{
+                    fontFamily:
+                      "var(--font-jetbrains-mono), ui-monospace, monospace",
+                    fontSize: 11,
+                    fontWeight: 500,
+                    letterSpacing: "0.16em",
+                    textTransform: "uppercase",
+                    color: "var(--felt)",
+                  }}
                 >
-                  recount or edit.
-                </Link>
-              </p>
+                  ended
+                </span>
+              }
+            />
+
+            {loadingState === "loading" ? (
+              <SummaryMessage eyebrow="loading" headline="counting the chips." />
             ) : null}
 
-            {/* P&L list */}
-            <div className="mt-8">
-              <p className="font-mono text-sm uppercase tracking-[0.18em] text-[var(--ink-soft)]">
-                the night.
-              </p>
-              <div className="mt-4 space-y-3">
-                {sortedPlayers.map((player) => {
-                  const isWinner = player.net > 0;
-                  const isLoser = player.net < 0;
-                  const pnlColor = isWinner
-                    ? "text-[var(--table-green)]"
-                    : isLoser
-                      ? "text-[var(--terracotta)]"
-                      : "text-[var(--ink-soft)]";
-
-                  return (
-                    <article
-                      key={player.id}
-                      className="border border-[var(--line)] bg-[#fffaf0] p-5 shadow-[0_18px_60px_rgba(36,25,19,0.07)]"
-                    >
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="min-w-0">
-                          <p className="truncate text-2xl font-semibold leading-tight">
-                            {player.name}
-                          </p>
-                          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 font-mono text-xs uppercase tracking-[0.14em] text-[var(--ink-soft)]">
-                            <span>{player.total_buy_ins}&times; buy-in</span>
-                            <span>in for {formatCurrency(player.inFor)}</span>
-                            {player.final_chips !== null ? (
-                              <span>
-                                chips {formatCurrency(player.final_chips)}
-                              </span>
-                            ) : (
-                              <span className="text-[var(--terracotta)]">
-                                chips missing
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        <div className="shrink-0 text-right">
-                          <p
-                            className={`text-2xl font-semibold leading-tight sm:text-3xl ${pnlColor}`}
-                          >
-                            {player.final_chips !== null
-                              ? formatPnL(player.net)
-                              : "—"}
-                          </p>
-                          <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--ink-soft)]">
-                            net p&amp;l
-                          </p>
-                        </div>
-                      </div>
-                    </article>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Edit values — host only */}
-            {isHost ? (
-              <div className="mt-6 flex justify-end">
-                <Link
-                  href={`/session/${sessionId}/end`}
-                  className="inline-flex h-10 items-center border border-[var(--line)] px-4 font-mono text-xs uppercase tracking-[0.12em] text-[var(--ink-soft)] transition hover:border-[var(--terracotta)] hover:text-foreground"
-                >
-                  edit values.
-                </Link>
-              </div>
+            {loadingState === "missing" ? (
+              <SummaryMessage
+                eyebrow="not found"
+                headline="no table here."
+                body="Check the link and try again."
+              />
             ) : null}
 
-            {/* Settlements */}
-            <div className="mt-6 border-t border-[var(--line)] pt-8">
-              <p className="font-mono text-sm uppercase tracking-[0.18em] text-[var(--ink-soft)]">
-                settle up.
-              </p>
+            {loadingState === "error" ? (
+              <SummaryMessage
+                eyebrow="blocked"
+                headline="couldn't load this one."
+                body={errorMessage || "Try refreshing the page."}
+              />
+            ) : null}
 
-              {!isBalanced ? (
-                <p className="mt-4 text-base text-[var(--ink-soft)]">
-                  the books don&apos;t balance.{" "}
-                  <Link
-                    href={`/session/${sessionId}/end`}
-                    className="text-[var(--terracotta)] underline underline-offset-2"
-                  >
-                    recount or edit.
-                  </Link>
-                </p>
-              ) : everyoneEven ? (
-                <p className="mt-4 text-base text-[var(--ink-soft)]">
-                  everyone&apos;s even. nothing to settle.{" "}
-                  <span className="font-serif italic text-[var(--table-green)]">
-                    ♠
-                  </span>
-                </p>
-              ) : (
-                <>
-                  {/* Toggle */}
-                  <div className="mt-4 flex">
-                    <button
-                      type="button"
-                      onClick={() => setView("payer")}
-                      className={`h-8 border px-3 font-mono text-xs uppercase tracking-[0.12em] transition ${
-                        view === "payer"
-                          ? "border-foreground bg-foreground text-background"
-                          : "border-[var(--line)] text-[var(--ink-soft)] hover:text-foreground"
-                      }`}
-                    >
-                      by payer
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setView("receiver")}
-                      className={`h-8 border border-l-0 px-3 font-mono text-xs uppercase tracking-[0.12em] transition ${
-                        view === "receiver"
-                          ? "border-foreground bg-foreground text-background"
-                          : "border-[var(--line)] text-[var(--ink-soft)] hover:text-foreground"
-                      }`}
-                    >
-                      by receiver
-                    </button>
+            {loadingState === "ready" && session ? (
+              <div style={{ paddingTop: 32, paddingBottom: 48 }}>
+                {/* ── Hero heading ── */}
+                <header
+                  style={{
+                    display: "grid",
+                    gap: 24,
+                    borderBottom: "1px solid var(--rule)",
+                    paddingBottom: 28,
+                  }}
+                  className="lg:grid-cols-[1fr_auto] lg:items-end"
+                >
+                  {/* Heading + date */}
+                  <div>
+                    <Eyebrow style={{ color: "var(--felt)" }}>
+                      session ended
+                    </Eyebrow>
+
+                    <h1 style={{ marginTop: 14 }}>
+                      <span
+                        style={{
+                          display: "block",
+                          fontFamily:
+                            "var(--font-instrument-serif), serif",
+                          fontStyle: "italic",
+                          fontSize: "clamp(40px, 8vw, 72px)",
+                          fontWeight: 400,
+                          lineHeight: 0.95,
+                          letterSpacing: "-0.02em",
+                          color: "var(--terra)",
+                        }}
+                      >
+                        from chaos,
+                      </span>
+                      <span
+                        style={{
+                          display: "block",
+                          fontFamily:
+                            "var(--font-instrument-serif), serif",
+                          fontSize: "clamp(40px, 8vw, 72px)",
+                          fontWeight: 400,
+                          lineHeight: 0.95,
+                          letterSpacing: "-0.015em",
+                          color: "var(--ink)",
+                          marginTop: 2,
+                        }}
+                      >
+                        to clarity.
+                      </span>
+                    </h1>
+
+                    {session.ended_at ? (
+                      <p
+                        style={{
+                          marginTop: 16,
+                          fontFamily:
+                            "var(--font-jetbrains-mono), ui-monospace, monospace",
+                          fontSize: 11,
+                          fontWeight: 500,
+                          letterSpacing: "0.16em",
+                          textTransform: "uppercase",
+                          color: "var(--ink-mute)",
+                        }}
+                      >
+                        {formatDate(session.ended_at)}
+                      </p>
+                    ) : null}
                   </div>
 
-                  {/* By payer */}
-                  {view === "payer" ? (
-                    <div className="mt-4 space-y-5">
-                      {byPayer.map((payer) => (
-                        <div key={payer.fromName}>
-                          <p className="font-mono text-xs uppercase tracking-[0.16em] text-[var(--ink-soft)]">
-                            {payer.fromName} owes.
-                          </p>
-                          <ul className="mt-2 space-y-2">
-                            {payer.payments.map((payment) => (
-                              <li
-                                key={payment.toPlayerId}
-                                className="flex items-baseline justify-between gap-4 border border-[var(--line)] bg-[#fffaf0] px-4 py-3"
-                              >
-                                <span className="text-sm text-[var(--ink-soft)]">
-                                  <span className="mr-2 text-[var(--terracotta)]">
-                                    →
-                                  </span>
-                                  {payment.toName}
-                                </span>
-                                <span className="shrink-0 font-mono text-sm font-semibold text-[var(--terracotta)]">
-                                  {formatCurrency(payment.amount)}
-                                </span>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      ))}
-                    </div>
-                  ) : null}
-
-                  {/* By receiver */}
-                  {view === "receiver" ? (
-                    <div className="mt-4 space-y-5">
-                      {byReceiver.map((receiver) => (
-                        <div key={receiver.toName}>
-                          <p className="font-mono text-xs uppercase tracking-[0.16em] text-[var(--ink-soft)]">
-                            {receiver.toName} receives.
-                          </p>
-                          <ul className="mt-2 space-y-2">
-                            {receiver.receipts.map((receipt) => (
-                              <li
-                                key={receipt.fromPlayerId}
-                                className="flex items-baseline justify-between gap-4 border border-[var(--line)] bg-[#fffaf0] px-4 py-3"
-                              >
-                                <span className="text-sm text-[var(--ink-soft)]">
-                                  <span className="mr-2 text-[var(--table-green)]">
-                                    ←
-                                  </span>
-                                  from {receipt.fromName}
-                                </span>
-                                <span className="shrink-0 font-mono text-sm font-semibold text-[var(--table-green)]">
-                                  {formatCurrency(receipt.amount)}
-                                </span>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      ))}
-                    </div>
-                  ) : null}
-                </>
-              )}
-
-              {/* Share button — shown only when books balance */}
-              {isBalanced ? (
-                <div className="mt-6">
-                  <button
-                    type="button"
-                    onClick={handleShare}
-                    className="h-11 border border-[var(--table-green)] px-5 font-mono text-xs uppercase tracking-[0.12em] text-[var(--table-green)] transition hover:bg-[var(--table-green)] hover:text-background"
+                  {/* Stat cards */}
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(3, 1fr)",
+                      gap: 8,
+                    }}
+                    className="lg:min-w-[420px]"
                   >
-                    {shareState === "shared"
-                      ? "shared."
-                      : shareState === "copied"
-                        ? "copied to clipboard."
-                        : "share settlements."}
-                  </button>
+                    <Stat label="buy-ins" value={String(totalBuyIns)} />
+                    <Stat
+                      label="table bank"
+                      value={formatCurrency(tableBank)}
+                    />
+                    <Stat
+                      label="final chips"
+                      value={
+                        hasMissingChips ? "—" : formatCurrency(totalFinalChips)
+                      }
+                    />
+                  </div>
+                </header>
+
+                {/* Not balanced warning */}
+                {!isBalanced ? (
+                  <p
+                    style={{
+                      marginTop: 20,
+                      border: "1px solid var(--terra)",
+                      background: "rgba(224,148,114,0.08)",
+                      padding: "10px 14px",
+                      fontSize: 14,
+                      color: "var(--terra)",
+                    }}
+                  >
+                    {hasMissingChips
+                      ? "some chip values are missing — "
+                      : "math doesn't add up — "}
+                    <Link
+                      href={`/session/${sessionId}/end`}
+                      style={{
+                        textDecoration: "underline",
+                        textUnderlineOffset: 2,
+                      }}
+                    >
+                      recount or edit.
+                    </Link>
+                  </p>
+                ) : null}
+
+                {/* ── Main content: desktop two-col, mobile stack ── */}
+                {/* Wrapper for the two-column layout on desktop */}
+                <div
+                  style={{ marginTop: 32 }}
+                  className="flex flex-col gap-8 lg:grid lg:grid-cols-[1.6fr_1fr] lg:items-start"
+                >
+                    {/* ── Left: The Standing ── */}
+                    <div>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "baseline",
+                          justifyContent: "space-between",
+                          marginBottom: 14,
+                        }}
+                      >
+                        <Eyebrow soft>the standing.</Eyebrow>
+                        <span
+                          className="hidden lg:block"
+                          style={{
+                            fontFamily:
+                              "var(--font-jetbrains-mono), ui-monospace, monospace",
+                            fontSize: 10,
+                            fontWeight: 500,
+                            letterSpacing: "0.16em",
+                            textTransform: "uppercase",
+                            color: "var(--ink-mute)",
+                          }}
+                        >
+                          {sortedPlayers.length} players
+                        </span>
+                      </div>
+
+                      <motion.div
+                        variants={containerVariants}
+                        initial="hidden"
+                        animate="visible"
+                        style={{
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 10,
+                        }}
+                      >
+                        {sortedPlayers.map((player) => {
+                          const pill = pillMap.get(player.id);
+                          const accentColor =
+                            player.net > 0
+                              ? "var(--pos)"
+                              : player.net < 0
+                                ? "var(--neg)"
+                                : "var(--ink-mute)";
+                          const pnlColor =
+                            player.net > 0
+                              ? "var(--pos)"
+                              : player.net < 0
+                                ? "var(--neg)"
+                                : "var(--ink-mute)";
+
+                          return (
+                            <motion.article
+                              key={player.id}
+                              variants={rowVariants}
+                              whileHover={{
+                                y: -2,
+                                transition: { duration: 0.15 },
+                              }}
+                              style={{
+                                display: "flex",
+                                border: "1px solid var(--rule)",
+                                background: "var(--bg-card)",
+                                overflow: "hidden",
+                              }}
+                            >
+                              {/* Colored left accent bar */}
+                              <div
+                                style={{
+                                  width: 4,
+                                  flexShrink: 0,
+                                  background: accentColor,
+                                }}
+                              />
+
+                              {/* Card body */}
+                              <div
+                                style={{ flex: 1, padding: "16px 18px" }}
+                              >
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    alignItems: "flex-start",
+                                    justifyContent: "space-between",
+                                    gap: 12,
+                                  }}
+                                >
+                                  {/* Left: name + pill + stats row */}
+                                  <div
+                                    style={{ flex: 1, minWidth: 0 }}
+                                  >
+                                    <div
+                                      style={{
+                                        display: "flex",
+                                        alignItems: "center",
+                                        gap: 8,
+                                        flexWrap: "wrap",
+                                      }}
+                                    >
+                                      <p
+                                        style={{
+                                          fontFamily:
+                                            "var(--font-instrument-serif), serif",
+                                          fontStyle: "italic",
+                                          fontSize: 24,
+                                          fontWeight: 400,
+                                          lineHeight: 1,
+                                          color: "var(--ink)",
+                                          margin: 0,
+                                        }}
+                                      >
+                                        {player.name}
+                                      </p>
+                                      {pill ? (
+                                        <StatusPill pill={pill} />
+                                      ) : null}
+                                    </div>
+
+                                    <p
+                                      style={{
+                                        marginTop: 8,
+                                        fontFamily:
+                                          "var(--font-jetbrains-mono), ui-monospace, monospace",
+                                        fontSize: 10,
+                                        fontWeight: 500,
+                                        letterSpacing: "0.14em",
+                                        textTransform: "uppercase",
+                                        color: "var(--ink-mute)",
+                                        margin: "8px 0 0",
+                                      }}
+                                    >
+                                      {player.total_buy_ins}× buy-in · in{" "}
+                                      {formatCurrency(player.inFor)} · chips{" "}
+                                      {player.final_chips !== null
+                                        ? formatCurrency(player.final_chips)
+                                        : "—"}
+                                    </p>
+                                  </div>
+
+                                  {/* Right: P&L number + label */}
+                                  <div
+                                    style={{
+                                      flexShrink: 0,
+                                      textAlign: "right",
+                                    }}
+                                  >
+                                    <p
+                                      style={{
+                                        fontFamily:
+                                          "var(--font-jetbrains-mono), ui-monospace, monospace",
+                                        fontSize: 22,
+                                        fontWeight: 500,
+                                        lineHeight: 1,
+                                        fontVariantNumeric: "tabular-nums",
+                                        margin: 0,
+                                        color: pnlColor,
+                                      }}
+                                    >
+                                      {player.final_chips !== null
+                                        ? formatPnL(player.net)
+                                        : "—"}
+                                    </p>
+                                    <p
+                                      style={{
+                                        marginTop: 4,
+                                        fontFamily:
+                                          "var(--font-jetbrains-mono), ui-monospace, monospace",
+                                        fontSize: 9,
+                                        fontWeight: 500,
+                                        letterSpacing: "0.14em",
+                                        textTransform: "uppercase",
+                                        color: "var(--ink-mute)",
+                                        margin: "4px 0 0",
+                                      }}
+                                    >
+                                      net p&amp;l
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+                            </motion.article>
+                          );
+                        })}
+                      </motion.div>
+
+                      {/* Edit values — host only, right-aligned below standing cards */}
+                      {isHost ? (
+                        <div
+                          style={{
+                            marginTop: 16,
+                            display: "flex",
+                            justifyContent: "flex-end",
+                          }}
+                        >
+                          <Link
+                            href={`/session/${sessionId}/end`}
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              height: 36,
+                              padding: "0 14px",
+                              border: "1px solid var(--rule-strong)",
+                              background: "transparent",
+                              fontFamily:
+                                "var(--font-jetbrains-mono), ui-monospace, monospace",
+                              fontSize: 11,
+                              fontWeight: 500,
+                              letterSpacing: "0.14em",
+                              textTransform: "uppercase",
+                              color: "var(--ink-soft)",
+                              textDecoration: "none",
+                              transition:
+                                "border-color 0.15s ease, color 0.15s ease",
+                            }}
+                            className="hover:border-[var(--ink)] hover:text-[var(--ink)]"
+                          >
+                            edit values
+                          </Link>
+                        </div>
+                      ) : null}
+                    </div>
+
+                    {/* ── Right: Settle Up ── */}
+                    <div>
+                      <div
+                        style={{
+                          borderTop: "1px solid var(--rule)",
+                          paddingTop: 28,
+                        }}
+                        className="lg:border-t-0 lg:pt-0"
+                      >
+                        <Eyebrow soft>settle up.</Eyebrow>
+
+                        {!isBalanced ? (
+                          <p
+                            style={{
+                              marginTop: 16,
+                              fontSize: 14,
+                              color: "var(--ink-soft)",
+                              lineHeight: 1.6,
+                            }}
+                          >
+                            the books don&apos;t balance.{" "}
+                            <Link
+                              href={`/session/${sessionId}/end`}
+                              style={{
+                                color: "var(--terra)",
+                                textDecoration: "underline",
+                                textUnderlineOffset: 2,
+                              }}
+                            >
+                              recount or edit.
+                            </Link>
+                          </p>
+                        ) : everyoneEven ? (
+                          <p
+                            style={{
+                              marginTop: 16,
+                              fontSize: 14,
+                              color: "var(--ink-soft)",
+                              lineHeight: 1.6,
+                            }}
+                          >
+                            everyone&apos;s even. nothing to settle.{" "}
+                            <span
+                              style={{
+                                fontFamily:
+                                  "var(--font-instrument-serif), serif",
+                                fontStyle: "italic",
+                                color: "var(--felt)",
+                              }}
+                            >
+                              ♠
+                            </span>
+                          </p>
+                        ) : (
+                          <>
+                            {/* Toggle */}
+                            <div
+                              style={{ marginTop: 16, display: "flex" }}
+                            >
+                              <button
+                                type="button"
+                                onClick={() => setView("payer")}
+                                style={{
+                                  height: 34,
+                                  padding: "0 14px",
+                                  fontFamily:
+                                    "var(--font-jetbrains-mono), ui-monospace, monospace",
+                                  fontSize: 11,
+                                  fontWeight: 500,
+                                  letterSpacing: "0.12em",
+                                  textTransform: "uppercase",
+                                  border: "1px solid var(--rule-strong)",
+                                  cursor: "pointer",
+                                  transition:
+                                    "background 0.15s ease, color 0.15s ease",
+                                  background:
+                                    view === "payer"
+                                      ? "var(--ink)"
+                                      : "transparent",
+                                  color:
+                                    view === "payer"
+                                      ? "var(--bg)"
+                                      : "var(--ink-soft)",
+                                }}
+                              >
+                                by payer
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setView("receiver")}
+                                style={{
+                                  height: 34,
+                                  padding: "0 14px",
+                                  fontFamily:
+                                    "var(--font-jetbrains-mono), ui-monospace, monospace",
+                                  fontSize: 11,
+                                  fontWeight: 500,
+                                  letterSpacing: "0.12em",
+                                  textTransform: "uppercase",
+                                  border: "1px solid var(--rule-strong)",
+                                  borderLeft: "none",
+                                  cursor: "pointer",
+                                  transition:
+                                    "background 0.15s ease, color 0.15s ease",
+                                  background:
+                                    view === "receiver"
+                                      ? "var(--ink)"
+                                      : "transparent",
+                                  color:
+                                    view === "receiver"
+                                      ? "var(--bg)"
+                                      : "var(--ink-soft)",
+                                }}
+                              >
+                                by receiver
+                              </button>
+                            </div>
+
+                            {/* Settlement rows — animated on toggle switch */}
+                            <AnimatePresence mode="wait">
+                              {view === "payer" ? (
+                                <motion.div
+                                  key="payer"
+                                  variants={settleVariants}
+                                  initial="hidden"
+                                  animate="visible"
+                                  exit="exit"
+                                  style={{
+                                    marginTop: 16,
+                                    display: "flex",
+                                    flexDirection: "column",
+                                    gap: 16,
+                                  }}
+                                >
+                                  {byPayer.map((payer) => (
+                                    <div key={payer.fromName}>
+                                      <p
+                                        style={{
+                                          fontFamily:
+                                            "var(--font-jetbrains-mono), ui-monospace, monospace",
+                                          fontSize: 10,
+                                          fontWeight: 500,
+                                          letterSpacing: "0.16em",
+                                          textTransform: "uppercase",
+                                          color: "var(--ink-mute)",
+                                          marginBottom: 8,
+                                        }}
+                                      >
+                                        {payer.fromName} owes.
+                                      </p>
+                                      <ul
+                                        style={{
+                                          display: "flex",
+                                          flexDirection: "column",
+                                          gap: 6,
+                                          listStyle: "none",
+                                          margin: 0,
+                                          padding: 0,
+                                        }}
+                                      >
+                                        {payer.payments.map((payment) => (
+                                          <li
+                                            key={payment.toPlayerId}
+                                            style={{
+                                              display: "flex",
+                                              alignItems: "baseline",
+                                              justifyContent: "space-between",
+                                              gap: 12,
+                                              border:
+                                                "1px solid var(--rule)",
+                                              background: "var(--bg-elev)",
+                                              padding: "10px 14px",
+                                            }}
+                                          >
+                                            <span
+                                              style={{
+                                                fontSize: 15,
+                                                color: "var(--ink)",
+                                              }}
+                                            >
+                                              <span
+                                                style={{
+                                                  marginRight: 8,
+                                                  color: "var(--terra)",
+                                                }}
+                                              >
+                                                →
+                                              </span>
+                                              <span
+                                                style={{
+                                                  fontFamily:
+                                                    "var(--font-instrument-serif), serif",
+                                                  fontStyle: "italic",
+                                                }}
+                                              >
+                                                {payment.toName}
+                                              </span>
+                                            </span>
+                                            <span
+                                              style={{
+                                                flexShrink: 0,
+                                                fontFamily:
+                                                  "var(--font-jetbrains-mono), ui-monospace, monospace",
+                                                fontSize: 14,
+                                                fontWeight: 500,
+                                                fontVariantNumeric:
+                                                  "tabular-nums",
+                                                color: "var(--terra)",
+                                              }}
+                                            >
+                                              {formatCurrency(payment.amount)}
+                                            </span>
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    </div>
+                                  ))}
+                                </motion.div>
+                              ) : (
+                                <motion.div
+                                  key="receiver"
+                                  variants={settleVariants}
+                                  initial="hidden"
+                                  animate="visible"
+                                  exit="exit"
+                                  style={{
+                                    marginTop: 16,
+                                    display: "flex",
+                                    flexDirection: "column",
+                                    gap: 16,
+                                  }}
+                                >
+                                  {byReceiver.map((receiver) => (
+                                    <div key={receiver.toName}>
+                                      <p
+                                        style={{
+                                          fontFamily:
+                                            "var(--font-jetbrains-mono), ui-monospace, monospace",
+                                          fontSize: 10,
+                                          fontWeight: 500,
+                                          letterSpacing: "0.16em",
+                                          textTransform: "uppercase",
+                                          color: "var(--ink-mute)",
+                                          marginBottom: 8,
+                                        }}
+                                      >
+                                        {receiver.toName} receives.
+                                      </p>
+                                      <ul
+                                        style={{
+                                          display: "flex",
+                                          flexDirection: "column",
+                                          gap: 6,
+                                          listStyle: "none",
+                                          margin: 0,
+                                          padding: 0,
+                                        }}
+                                      >
+                                        {receiver.receipts.map((receipt) => (
+                                          <li
+                                            key={receipt.fromPlayerId}
+                                            style={{
+                                              display: "flex",
+                                              alignItems: "baseline",
+                                              justifyContent: "space-between",
+                                              gap: 12,
+                                              border:
+                                                "1px solid var(--rule)",
+                                              background: "var(--bg-elev)",
+                                              padding: "10px 14px",
+                                            }}
+                                          >
+                                            <span
+                                              style={{
+                                                fontSize: 15,
+                                                color: "var(--ink)",
+                                              }}
+                                            >
+                                              <span
+                                                style={{
+                                                  marginRight: 8,
+                                                  color: "var(--pos)",
+                                                }}
+                                              >
+                                                ←
+                                              </span>
+                                              <span
+                                                style={{
+                                                  fontFamily:
+                                                    "var(--font-instrument-serif), serif",
+                                                  fontStyle: "italic",
+                                                }}
+                                              >
+                                                from {receipt.fromName}
+                                              </span>
+                                            </span>
+                                            <span
+                                              style={{
+                                                flexShrink: 0,
+                                                fontFamily:
+                                                  "var(--font-jetbrains-mono), ui-monospace, monospace",
+                                                fontSize: 14,
+                                                fontWeight: 500,
+                                                fontVariantNumeric:
+                                                  "tabular-nums",
+                                                color: "var(--pos)",
+                                              }}
+                                            >
+                                              {formatCurrency(receipt.amount)}
+                                            </span>
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    </div>
+                                  ))}
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+                          </>
+                        )}
+
+                        {/* Share button — shown when books balance */}
+                        {isBalanced ? (
+                          <div style={{ marginTop: 20 }}>
+                            <button
+                              type="button"
+                              onClick={handleShare}
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                height: 40,
+                                padding: "0 18px",
+                                border: "1px solid var(--felt)",
+                                background: "transparent",
+                                fontFamily:
+                                  "var(--font-jetbrains-mono), ui-monospace, monospace",
+                                fontSize: 11,
+                                fontWeight: 500,
+                                letterSpacing: "0.14em",
+                                textTransform: "uppercase",
+                                color: "var(--felt)",
+                                cursor: "pointer",
+                                transition:
+                                  "background 0.15s ease, color 0.15s ease",
+                              }}
+                              className="hover:bg-[var(--felt)] hover:text-[var(--bg)]"
+                            >
+                              {shareState === "shared"
+                                ? "shared."
+                                : shareState === "copied"
+                                  ? "copied to clipboard."
+                                  : "share settlements."}
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
                 </div>
-              ) : null}
-            </div>
+              </div>
+            ) : null}
           </div>
-        ) : null}
-      </section>
+        </div>
+      </div>
     </main>
-  );
-}
-
-function SummaryMessage({
-  eyebrow,
-  headline,
-  body,
-}: {
-  eyebrow: string;
-  headline: string;
-  body?: string;
-}) {
-  return (
-    <div className="py-20">
-      <p className="font-mono text-sm uppercase tracking-[0.18em] text-[var(--terracotta)]">
-        {eyebrow}
-      </p>
-      <h1 className="mt-5 text-5xl font-semibold leading-none tracking-normal sm:text-6xl">
-        {headline}
-      </h1>
-      {body ? (
-        <p className="mt-6 max-w-xl text-lg leading-8 text-[var(--ink-soft)]">
-          {body}
-        </p>
-      ) : null}
-    </div>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="border border-[var(--line)] bg-[#fffaf0] p-4">
-      <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[var(--ink-soft)]">
-        {label}
-      </p>
-      <p className="mt-2 text-xl font-semibold leading-tight">{value}</p>
-    </div>
   );
 }
