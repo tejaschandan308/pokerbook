@@ -490,7 +490,7 @@ export function SummaryView({ sessionId }: { sessionId: string }) {
         className="sm:px-10"
       >
         <div style={{ position: "relative" }}>
-          <div className="felt-motif" />
+          <div className="felt-motif" style={{ position: "fixed" }} />
           <div style={{ position: "relative", zIndex: 1 }}>
             <AppHeader
               right={

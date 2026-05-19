@@ -75,6 +75,7 @@ function Stat({ label, value }: { label: string; value: string }) {
     <motion.div
       variants={statVariants}
       style={{
+        minWidth: 0,
         border: "1px solid var(--rule)",
         background: "var(--bg-card)",
         padding: "14px 16px",
@@ -468,7 +469,7 @@ export function EndSessionForm({ sessionId }: { sessionId: string }) {
         style={{
           background: "var(--bg)",
           color: "var(--ink)",
-          minHeight: "100vh",
+          minHeight: "100dvh",
           position: "relative",
           overflowX: "hidden",
         }}
@@ -479,6 +480,8 @@ export function EndSessionForm({ sessionId }: { sessionId: string }) {
           style={{
             position: "relative",
             zIndex: 1,
+            width: "100%",
+            boxSizing: "border-box",
             maxWidth: 1000,
             margin: "0 auto",
             padding: "0 20px 80px",
@@ -595,7 +598,7 @@ export function EndSessionForm({ sessionId }: { sessionId: string }) {
                   animate="show"
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "repeat(3, 1fr)",
+                    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
                     gap: 10,
                   }}
                   className="lg:min-w-[440px]"
@@ -632,6 +635,7 @@ export function EndSessionForm({ sessionId }: { sessionId: string }) {
                       key={player.id}
                       variants={rowVariants}
                       style={{
+                        minWidth: 0,
                         border: "1px solid var(--rule)",
                         background: "var(--bg-card)",
                         padding: 20,
@@ -639,12 +643,12 @@ export function EndSessionForm({ sessionId }: { sessionId: string }) {
                     >
                       {/* On desktop: flex row (name left, controls right).
                           On mobile: flex col (name row, then controls row). */}
-                      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between lg:gap-8">
+                      <div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-start lg:justify-between lg:gap-8">
 
                         {/* Name + in-for */}
                         <div style={{ flex: 1, minWidth: 0 }}>
                           {/* Mobile: flex row (name | in-for). Desktop: block stack. */}
-                          <div className="flex items-baseline justify-between gap-3 lg:block">
+                          <div className="flex min-w-0 items-baseline justify-between gap-3 lg:block">
                             <p
                               style={{
                                 fontFamily:
@@ -667,10 +671,10 @@ export function EndSessionForm({ sessionId }: { sessionId: string }) {
                             <div
                               style={{
                                 overflow: "hidden",
-                                flexShrink: 0,
                                 position: "relative",
+                                minWidth: 0,
                               }}
-                              className="lg:mt-1"
+                              className="lg:mt-1 lg:shrink-0"
                             >
                               <AnimatePresence mode="popLayout" initial={false}>
                                 <motion.p
@@ -700,8 +704,9 @@ export function EndSessionForm({ sessionId }: { sessionId: string }) {
                         <div
                           style={{
                             display: "grid",
-                            gridTemplateColumns: "1fr 1fr",
+                            gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
                             gap: 10,
+                            minWidth: 0,
                           }}
                           className="lg:w-[320px] lg:flex-shrink-0"
                         >
@@ -1016,6 +1021,7 @@ export function EndSessionForm({ sessionId }: { sessionId: string }) {
             borderTop: "1px solid var(--rule)",
             background: "var(--bg-inset)",
             boxShadow: "0 -4px 20px rgba(0,0,0,0.35)",
+            paddingBottom: "env(safe-area-inset-bottom)",
           }}
         >
           <div
