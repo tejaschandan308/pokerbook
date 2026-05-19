@@ -4,8 +4,11 @@ import type { FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { supabase } from "@/lib/supabase";
 import { getStoredPin } from "@/lib/pin-auth";
+import { AppHeader } from "@/components/ui/app-header";
+import { Eyebrow } from "@/components/ui/eyebrow";
 
 type Session = {
   id: string;
@@ -44,6 +47,133 @@ function formatCurrency(amount: number) {
   return currencyFormatter.format(amount);
 }
 
+/* ─── Animation constants ────────────────────────────────────────────────── */
+
+const ease = [0.2, 0.7, 0.2, 1] as const;
+
+const rowVariants = {
+  hidden: { opacity: 0, y: 14 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.32, ease } },
+};
+
+const statVariants = {
+  hidden: { opacity: 0, y: 8 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.3, ease } },
+};
+
+function containerVariants(stagger = 0.07, delay = 0.1) {
+  return {
+    hidden: {},
+    show: { transition: { staggerChildren: stagger, delayChildren: delay } },
+  };
+}
+
+/* ─── Stat card with animated number ────────────────────────────────────── */
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <motion.div
+      variants={statVariants}
+      style={{
+        border: "1px solid var(--rule)",
+        background: "var(--bg-card)",
+        padding: "14px 16px",
+      }}
+    >
+      <p
+        style={{
+          fontFamily: "var(--font-jetbrains-mono), ui-monospace, monospace",
+          fontSize: 10,
+          fontWeight: 500,
+          letterSpacing: "0.16em",
+          textTransform: "uppercase",
+          color: "var(--ink-mute)",
+        }}
+      >
+        {label}
+      </p>
+      <div style={{ marginTop: 8, overflow: "hidden", position: "relative" }}>
+        <AnimatePresence mode="popLayout" initial={false}>
+          <motion.p
+            key={value}
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 10 }}
+            transition={{ duration: 0.22, ease }}
+            style={{
+              fontFamily: "var(--font-instrument-serif), serif",
+              fontSize: 22,
+              fontWeight: 400,
+              lineHeight: 1.1,
+              letterSpacing: "-0.01em",
+              color: "var(--ink)",
+            }}
+          >
+            {value}
+          </motion.p>
+        </AnimatePresence>
+      </div>
+    </motion.div>
+  );
+}
+
+/* ─── Loading / error message ────────────────────────────────────────────── */
+
+function EndSessionMessage({
+  eyebrow,
+  headline,
+  body,
+}: {
+  eyebrow: string;
+  headline: string;
+  body?: string;
+}) {
+  return (
+    <div style={{ paddingTop: 80, paddingBottom: 80 }}>
+      <p
+        style={{
+          fontFamily: "var(--font-jetbrains-mono), ui-monospace, monospace",
+          fontSize: 11,
+          fontWeight: 500,
+          letterSpacing: "0.16em",
+          textTransform: "uppercase",
+          color: "var(--terra)",
+        }}
+      >
+        {eyebrow}
+      </p>
+      <h1
+        style={{
+          fontFamily: "var(--font-instrument-serif), serif",
+          fontSize: "clamp(48px, 10vw, 96px)",
+          fontWeight: 400,
+          lineHeight: 0.95,
+          letterSpacing: "-0.02em",
+          color: "var(--ink)",
+          marginTop: 20,
+        }}
+      >
+        {headline}
+      </h1>
+      {body ? (
+        <p
+          style={{
+            fontSize: 15,
+            lineHeight: 1.6,
+            color: "var(--ink-soft)",
+            marginTop: 20,
+            maxWidth: 480,
+          }}
+        >
+          {body}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+/* ─── Main component ─────────────────────────────────────────────────────── */
+
 export function EndSessionForm({ sessionId }: { sessionId: string }) {
   const router = useRouter();
   const [session, setSession] = useState<Session | null>(null);
@@ -59,6 +189,9 @@ export function EndSessionForm({ sessionId }: { sessionId: string }) {
   const [isEditing, setIsEditing] = useState(false);
   const [isHost, setIsHost] = useState(false);
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
+  const [pendingBuyInPlayerId, setPendingBuyInPlayerId] = useState<
+    string | null
+  >(null);
 
   const totalBuyIns = useMemo(
     () =>
@@ -112,28 +245,22 @@ export function EndSessionForm({ sessionId }: { sessionId: string }) {
         .eq("id", sessionId)
         .single();
 
-      if (!isMounted) {
-        return;
-      }
+      if (!isMounted) return;
 
       if (sessionError || !sessionData) {
         setLoadingState("missing");
         return;
       }
 
-      // Check PIN requirement and redirect if not authenticated
       const { data: hasPinData } = await supabase.rpc("session_has_pin", {
         p_session_id: sessionId,
       });
 
-      if (!isMounted) {
-        return;
-      }
+      if (!isMounted) return;
 
       if (hasPinData) {
         const storedPin = getStoredPin(sessionId);
         if (!storedPin) {
-          // Not authenticated — redirect to the right place
           if (sessionData.status === "ended") {
             router.replace(`/session/${sessionId}/summary`);
           } else {
@@ -143,7 +270,6 @@ export function EndSessionForm({ sessionId }: { sessionId: string }) {
         }
       }
 
-      // Everyone who reaches here has edit access (PIN verified or no PIN required)
       if (isMounted) setIsHost(true);
 
       if (sessionData.status === "ended") {
@@ -156,9 +282,7 @@ export function EndSessionForm({ sessionId }: { sessionId: string }) {
         .eq("session_id", sessionId)
         .order("created_at", { ascending: true });
 
-      if (!isMounted) {
-        return;
-      }
+      if (!isMounted) return;
 
       if (playersError || !playerData) {
         setLoadingState("error");
@@ -180,21 +304,18 @@ export function EndSessionForm({ sessionId }: { sessionId: string }) {
     }
 
     loadSession();
-
     return () => {
       isMounted = false;
     };
   }, [router, sessionId]);
 
   useEffect(() => {
-    // visualViewport unsupported (old browsers) → leave isKeyboardOpen false so the bar is always visible.
     if (typeof window === "undefined" || !window.visualViewport) return;
 
     const viewport = window.visualViewport;
     const initialHeight = viewport.height;
 
     function handleResize() {
-      // A shrink of >150px reliably signals a virtual keyboard; browser toolbars are <100px.
       setIsKeyboardOpen(initialHeight - viewport.height > 150);
     }
 
@@ -267,18 +388,45 @@ export function EndSessionForm({ sessionId }: { sessionId: string }) {
     );
   }
 
+  async function adjustBuyIn(player: PlayerForm, buyDelta: number) {
+    if (!supabase || pendingBuyInPlayerId || !isHost) return;
+    const currentCount = Number(player.buyIns);
+    if (buyDelta < 0 && currentCount <= 1) return;
+
+    setPendingBuyInPlayerId(player.id);
+    setSubmitError("");
+
+    const storedPin = getStoredPin(sessionId);
+    const { data, error } = await supabase
+      .rpc("adjust_player_buy_in", {
+        player_id: player.id,
+        p_delta: buyDelta,
+        p_pin: storedPin,
+      })
+      .single<Player>();
+
+    if (error || !data) {
+      setSubmitError("couldn't update buy-in. please try again.");
+      setPendingBuyInPlayerId(null);
+      return;
+    }
+
+    setPlayers((current) =>
+      current.map((p) =>
+        p.id === data.id ? { ...p, buyIns: String(data.total_buy_ins) } : p,
+      ),
+    );
+    setPendingBuyInPlayerId(null);
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!supabase || isSaving) {
-      return;
-    }
+    if (!supabase || isSaving) return;
 
     setSubmitError("");
 
-    if (!validatePlayers()) {
-      return;
-    }
+    if (!validatePlayers()) return;
 
     setIsSaving(true);
 
@@ -316,16 +464,44 @@ export function EndSessionForm({ sessionId }: { sessionId: string }) {
 
   return (
     <>
-      <main className="min-h-screen overflow-x-hidden bg-background px-5 py-6 text-foreground sm:px-10 sm:py-8">
-        <section className="mx-auto w-full max-w-5xl">
-          <nav className="flex items-center justify-between gap-4 border-b border-[var(--line)] pb-5 font-mono text-xs uppercase tracking-[0.18em] text-[var(--ink-soft)]">
-            <Link href="/" className="transition hover:text-[var(--terracotta)]">
-              pokerbook
-            </Link>
-            <span className="text-[var(--terracotta)]">
-              {isEditing ? "edit values" : "end session"}
-            </span>
-          </nav>
+      <main
+        style={{
+          background: "var(--bg)",
+          color: "var(--ink)",
+          minHeight: "100vh",
+          position: "relative",
+          overflowX: "hidden",
+        }}
+      >
+        <div className="felt-motif" />
+
+        <div
+          style={{
+            position: "relative",
+            zIndex: 1,
+            maxWidth: 1000,
+            margin: "0 auto",
+            padding: "0 20px 80px",
+          }}
+          className="sm:px-10"
+        >
+          <AppHeader
+            right={
+              <span
+                style={{
+                  fontFamily:
+                    "var(--font-jetbrains-mono), ui-monospace, monospace",
+                  fontSize: 11,
+                  fontWeight: 500,
+                  letterSpacing: "0.16em",
+                  textTransform: "uppercase",
+                  color: "var(--terra)",
+                }}
+              >
+                {isEditing ? "edit values" : "end session"}
+              </span>
+            }
+          />
 
           {loadingState === "loading" ? (
             <EndSessionMessage eyebrow="loading" headline="counting the table." />
@@ -352,30 +528,94 @@ export function EndSessionForm({ sessionId }: { sessionId: string }) {
               id="end-session-form"
               noValidate
               onSubmit={handleSubmit}
-              className="py-8 sm:py-12"
+              style={{ paddingTop: 32 }}
             >
-              <header className="grid gap-6 border-b border-[var(--line)] pb-8 lg:grid-cols-[1fr_auto] lg:items-end">
+              {/* ── Page header ── */}
+              <header
+                style={{
+                  display: "grid",
+                  gap: 24,
+                  borderBottom: "1px solid var(--rule)",
+                  paddingBottom: 32,
+                }}
+                className="lg:grid-cols-[1fr_auto] lg:items-end"
+              >
                 <div>
-                  <p className="font-mono text-sm uppercase tracking-[0.18em] text-[var(--terracotta)]">
-                    {"♦"} {isEditing ? "edit values" : "final count"}
-                  </p>
-                  <h1 className="mt-4 text-5xl font-semibold leading-none tracking-normal sm:text-7xl">
-                    {session.name || "poker night."}
+                  <Eyebrow>
+                    ♦ {isEditing ? "edit values" : "final count"}
+                  </Eyebrow>
+                  <h1 style={{ marginTop: 14 }}>
+                    <span
+                      style={{
+                        display: "block",
+                        fontFamily: "var(--font-instrument-serif), serif",
+                        fontSize: "clamp(40px, 8vw, 80px)",
+                        fontWeight: 400,
+                        lineHeight: 0.95,
+                        letterSpacing: "-0.02em",
+                        color: "var(--ink)",
+                      }}
+                    >
+                      final
+                    </span>
+                    <span
+                      style={{
+                        display: "block",
+                        fontFamily: "var(--font-instrument-serif), serif",
+                        fontStyle: "italic",
+                        fontSize: "clamp(40px, 8vw, 80px)",
+                        fontWeight: 400,
+                        lineHeight: 0.95,
+                        letterSpacing: "-0.015em",
+                        color: "var(--terra)",
+                        marginTop: 2,
+                      }}
+                    >
+                      count.
+                    </span>
                   </h1>
-                  <p className="mt-5 max-w-2xl text-base leading-7 text-[var(--ink-soft)] sm:text-lg">
+                  <p
+                    style={{
+                      marginTop: 18,
+                      fontSize: 14,
+                      lineHeight: 1.55,
+                      color: "var(--ink-soft)",
+                      maxWidth: 480,
+                    }}
+                  >
                     Adjust buy-ins if the table memory was off. Then enter final
-                    chips in rupees.
+                    chips, in rupees.
                   </p>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:min-w-[460px]">
-                  <Stat label="buy-in" value={formatCurrency(session.buy_in_amount)} />
+                {/* Stat cards */}
+                <motion.div
+                  variants={containerVariants(0.07, 0.2)}
+                  initial="hidden"
+                  animate="show"
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(3, 1fr)",
+                    gap: 10,
+                  }}
+                  className="lg:min-w-[440px]"
+                >
+                  <Stat
+                    label="buy-in"
+                    value={formatCurrency(session.buy_in_amount)}
+                  />
                   <Stat label="buy-ins" value={String(totalBuyIns)} />
                   <Stat label="table bank" value={formatCurrency(tableBank)} />
-                </div>
+                </motion.div>
               </header>
 
-              <div className="mt-6 space-y-4">
+              {/* ── Player rows ── */}
+              <motion.div
+                variants={containerVariants(0.06, 0.35)}
+                initial="hidden"
+                animate="show"
+                style={{ marginTop: 24, display: "grid", gap: 12 }}
+              >
                 {players.map((player) => {
                   const buyIns = Number(player.buyIns);
                   const playerInFor =
@@ -383,143 +623,440 @@ export function EndSessionForm({ sessionId }: { sessionId: string }) {
                       ? buyIns * session.buy_in_amount
                       : 0;
                   const errors = fieldErrors[player.id] || {};
+                  const canDecrement = buyIns > 1;
+                  const isAdjusting = pendingBuyInPlayerId === player.id;
+                  const anyPending = !!pendingBuyInPlayerId;
 
                   return (
-                    <article
+                    <motion.article
                       key={player.id}
-                      className="border border-[var(--line)] bg-[#fffaf0] p-5 shadow-[0_18px_60px_rgba(36,25,19,0.07)]"
+                      variants={rowVariants}
+                      style={{
+                        border: "1px solid var(--rule)",
+                        background: "var(--bg-card)",
+                        padding: 20,
+                      }}
                     >
-                      <div className="grid gap-4 lg:grid-cols-[1fr_160px_220px] lg:items-start">
-                        <div className="min-w-0">
-                          <h2 className="truncate text-2xl font-semibold leading-tight">
-                            {player.name}
-                          </h2>
-                          <p className="mt-2 font-mono text-xs uppercase tracking-[0.16em] text-[var(--ink-soft)]">
-                            in for {formatCurrency(playerInFor)}
-                          </p>
-                        </div>
+                      {/* On desktop: flex row (name left, controls right).
+                          On mobile: flex col (name row, then controls row). */}
+                      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between lg:gap-8">
 
-                        <div>
-                          <label
-                            htmlFor={`buy-ins-${player.id}`}
-                            className="font-mono text-xs uppercase tracking-[0.16em] text-[var(--ink-soft)]"
-                          >
-                            buy-ins.
-                          </label>
-                          <input
-                            id={`buy-ins-${player.id}`}
-                            inputMode="numeric"
-                            min="1"
-                            step="1"
-                            type="number"
-                            value={player.buyIns}
-                            onChange={(event) =>
-                              updatePlayerField(
-                                player.id,
-                                "buyIns",
-                                event.target.value,
-                              )
-                            }
-                            className="mt-2 h-12 w-full border border-[var(--line)] bg-background px-3 text-base outline-none transition focus:border-[var(--terracotta)]"
-                          />
-                          {errors.buyIns ? (
-                            <p className="mt-2 text-sm text-[var(--terracotta)]">
-                              {errors.buyIns}
+                        {/* Name + in-for */}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          {/* Mobile: flex row (name | in-for). Desktop: block stack. */}
+                          <div className="flex items-baseline justify-between gap-3 lg:block">
+                            <p
+                              style={{
+                                fontFamily:
+                                  "var(--font-instrument-serif), serif",
+                                fontStyle: "italic",
+                                fontSize: 24,
+                                fontWeight: 400,
+                                letterSpacing: "-0.01em",
+                                lineHeight: 1.1,
+                                color: "var(--ink)",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                                flex: 1,
+                                minWidth: 0,
+                              }}
+                            >
+                              {player.name}
                             </p>
-                          ) : null}
-                        </div>
-
-                        <div>
-                          <label
-                            htmlFor={`final-chips-${player.id}`}
-                            className="font-mono text-xs uppercase tracking-[0.16em] text-[var(--ink-soft)]"
-                          >
-                            final chips.
-                          </label>
-                          <div className="mt-2 flex h-12 items-center border border-[var(--line)] bg-background px-3 focus-within:border-[var(--terracotta)]">
-                            <span className="pr-2 font-mono text-sm text-[var(--ink-soft)]">
-                              {"₹"}
-                            </span>
-                            <input
-                              id={`final-chips-${player.id}`}
-                              inputMode="numeric"
-                              min="0"
-                              step="1"
-                              type="number"
-                              value={player.finalChips}
-                              onChange={(event) =>
-                                updatePlayerField(
-                                  player.id,
-                                  "finalChips",
-                                  event.target.value,
-                                )
-                              }
-                              className="h-full w-full min-w-0 bg-transparent text-base outline-none"
-                            />
+                            <div
+                              style={{
+                                overflow: "hidden",
+                                flexShrink: 0,
+                                position: "relative",
+                              }}
+                              className="lg:mt-1"
+                            >
+                              <AnimatePresence mode="popLayout" initial={false}>
+                                <motion.p
+                                  key={playerInFor}
+                                  initial={{ opacity: 0, y: -6 }}
+                                  animate={{ opacity: 1, y: 0 }}
+                                  exit={{ opacity: 0, y: 6 }}
+                                  transition={{ duration: 0.2, ease }}
+                                  style={{
+                                    fontFamily:
+                                      "var(--font-jetbrains-mono), ui-monospace, monospace",
+                                    fontSize: 10,
+                                    fontWeight: 500,
+                                    letterSpacing: "0.16em",
+                                    textTransform: "uppercase",
+                                    color: "var(--ink-mute)",
+                                  }}
+                                >
+                                  in for {formatCurrency(playerInFor)}
+                                </motion.p>
+                              </AnimatePresence>
+                            </div>
                           </div>
-                          {errors.finalChips ? (
-                            <p className="mt-2 text-sm text-[var(--terracotta)]">
-                              {errors.finalChips}
+                        </div>
+
+                        {/* Controls: BUY-INS + FINAL CHIPS — 1fr/1fr, constrained on desktop */}
+                        <div
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "1fr 1fr",
+                            gap: 10,
+                          }}
+                          className="lg:w-[320px] lg:flex-shrink-0"
+                        >
+                          {/* BUY-INS stepper */}
+                          <div>
+                            <p
+                              style={{
+                                fontFamily:
+                                  "var(--font-jetbrains-mono), ui-monospace, monospace",
+                                fontSize: 10,
+                                fontWeight: 500,
+                                letterSpacing: "0.16em",
+                                textTransform: "uppercase",
+                                color: "var(--ink-mute)",
+                              }}
+                            >
+                              buy-ins
                             </p>
-                          ) : null}
+
+                            {/* Unified three-cell stepper: [-][N][+] */}
+                            <div
+                              style={{
+                                display: "flex",
+                                alignItems: "stretch",
+                                height: 40,
+                                marginTop: 6,
+                                border: "1px solid var(--rule-strong)",
+                                background: "var(--bg-elev)",
+                              }}
+                            >
+                              {/* Minus — host only */}
+                              {isHost ? (
+                                <motion.button
+                                  type="button"
+                                  onClick={() => adjustBuyIn(player, -1)}
+                                  disabled={!canDecrement || anyPending}
+                                  aria-label={`decrease buy-ins for ${player.name}`}
+                                  whileTap={
+                                    canDecrement && !anyPending
+                                      ? { scale: 0.92 }
+                                      : undefined
+                                  }
+                                  style={{
+                                    width: 36,
+                                    flexShrink: 0,
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    borderRight:
+                                      "1px solid var(--rule-strong)",
+                                    background: "var(--bg-card)",
+                                    color: !canDecrement
+                                      ? "var(--ink-mute)"
+                                      : "var(--ink-soft)",
+                                    fontSize: 16,
+                                    cursor:
+                                      !canDecrement || anyPending
+                                        ? "not-allowed"
+                                        : "pointer",
+                                    opacity: !canDecrement
+                                      ? 0.35
+                                      : anyPending && !isAdjusting
+                                        ? 0.5
+                                        : 1,
+                                    transition:
+                                      "opacity 0.15s ease, color 0.15s ease",
+                                  }}
+                                >
+                                  −
+                                </motion.button>
+                              ) : null}
+
+                              {/* Count */}
+                              <div
+                                style={{
+                                  flex: 1,
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  overflow: "hidden",
+                                  position: "relative",
+                                }}
+                              >
+                                <AnimatePresence
+                                  mode="popLayout"
+                                  initial={false}
+                                >
+                                  <motion.span
+                                    key={player.buyIns}
+                                    initial={{ opacity: 0, y: -8 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: 8 }}
+                                    transition={{ duration: 0.2, ease }}
+                                    style={{
+                                      display: "block",
+                                      fontFamily:
+                                        "var(--font-jetbrains-mono), ui-monospace, monospace",
+                                      fontSize: 16,
+                                      fontWeight: 500,
+                                      lineHeight: 1,
+                                      color: "var(--ink)",
+                                      fontVariantNumeric: "tabular-nums",
+                                    }}
+                                  >
+                                    {player.buyIns}
+                                  </motion.span>
+                                </AnimatePresence>
+                              </div>
+
+                              {/* Plus — host only */}
+                              {isHost ? (
+                                <motion.button
+                                  type="button"
+                                  onClick={() => adjustBuyIn(player, 1)}
+                                  disabled={anyPending}
+                                  aria-label={`increase buy-ins for ${player.name}`}
+                                  whileTap={
+                                    !anyPending ? { scale: 0.92 } : undefined
+                                  }
+                                  style={{
+                                    width: 36,
+                                    flexShrink: 0,
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    borderLeft:
+                                      "1px solid var(--rule-strong)",
+                                    background: "var(--bg-card)",
+                                    color: "var(--ink-soft)",
+                                    fontSize: 16,
+                                    cursor: anyPending
+                                      ? "not-allowed"
+                                      : "pointer",
+                                    opacity:
+                                      anyPending && !isAdjusting ? 0.5 : 1,
+                                    transition:
+                                      "opacity 0.15s ease, color 0.15s ease",
+                                  }}
+                                  className="enabled:hover:text-[var(--terra)]"
+                                >
+                                  +
+                                </motion.button>
+                              ) : null}
+                            </div>
+
+                            {errors.buyIns ? (
+                              <p
+                                style={{
+                                  marginTop: 6,
+                                  fontSize: 12,
+                                  color: "var(--terra)",
+                                }}
+                              >
+                                {errors.buyIns}
+                              </p>
+                            ) : null}
+                          </div>
+
+                          {/* Final chips input */}
+                          <div>
+                            <p
+                              style={{
+                                fontFamily:
+                                  "var(--font-jetbrains-mono), ui-monospace, monospace",
+                                fontSize: 10,
+                                fontWeight: 500,
+                                letterSpacing: "0.16em",
+                                textTransform: "uppercase",
+                                color: "var(--ink-mute)",
+                              }}
+                            >
+                              final chips
+                            </p>
+                            <div
+                              style={{
+                                marginTop: 6,
+                                display: "flex",
+                                height: 40,
+                                alignItems: "center",
+                                border: "1px solid var(--rule)",
+                                background: "var(--bg-elev)",
+                                padding: "0 10px",
+                                transition: "border-color 0.15s ease",
+                              }}
+                              className="focus-within:border-[var(--terra)]"
+                            >
+                              <span
+                                style={{
+                                  fontFamily:
+                                    "var(--font-jetbrains-mono), ui-monospace, monospace",
+                                  fontSize: 13,
+                                  color: "var(--ink-mute)",
+                                  marginRight: 6,
+                                  flexShrink: 0,
+                                }}
+                              >
+                                ₹
+                              </span>
+                              <input
+                                id={`final-chips-${player.id}`}
+                                inputMode="numeric"
+                                min="0"
+                                step="1"
+                                type="number"
+                                value={player.finalChips}
+                                onChange={(event) =>
+                                  updatePlayerField(
+                                    player.id,
+                                    "finalChips",
+                                    event.target.value,
+                                  )
+                                }
+                                placeholder="0"
+                                style={{
+                                  flex: 1,
+                                  minWidth: 0,
+                                  background: "transparent",
+                                  border: "none",
+                                  outline: "none",
+                                  fontSize: 15,
+                                  color: "var(--ink)",
+                                }}
+                                className="no-spin placeholder:text-[var(--ink-mute)]/50"
+                              />
+                            </div>
+                            {errors.finalChips ? (
+                              <p
+                                style={{
+                                  marginTop: 6,
+                                  fontSize: 12,
+                                  color: "var(--terra)",
+                                }}
+                              >
+                                {errors.finalChips}
+                              </p>
+                            ) : null}
+                          </div>
                         </div>
                       </div>
-                    </article>
+                    </motion.article>
                   );
                 })}
-              </div>
+              </motion.div>
 
               {submitError ? (
-                <p className="mt-5 border border-[var(--terracotta)] bg-[#fffaf0] p-3 text-sm text-[var(--terracotta)]">
+                <p
+                  style={{
+                    marginTop: 20,
+                    border: "1px solid var(--terra)",
+                    background: "var(--bg-card)",
+                    padding: 12,
+                    fontSize: 13,
+                    color: "var(--terra)",
+                  }}
+                >
                   {submitError}
                 </p>
               ) : null}
 
-              <div className="mt-8 border-t border-[var(--line)] pt-6">
+              <div
+                style={{
+                  marginTop: 32,
+                  borderTop: "1px solid var(--rule)",
+                  paddingTop: 24,
+                }}
+              >
                 <Link
                   href={
                     isEditing
                       ? `/session/${sessionId}/summary`
                       : `/session/${sessionId}`
                   }
-                  className="inline-flex h-10 items-center border border-[var(--line)] px-5 font-mono text-xs uppercase tracking-[0.12em] text-[var(--ink-soft)] transition hover:border-[var(--terracotta)] hover:text-foreground"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    height: 40,
+                    border: "1px solid var(--rule)",
+                    padding: "0 20px",
+                    fontFamily:
+                      "var(--font-jetbrains-mono), ui-monospace, monospace",
+                    fontSize: 11,
+                    fontWeight: 500,
+                    letterSpacing: "0.12em",
+                    textTransform: "uppercase",
+                    color: "var(--ink-soft)",
+                    textDecoration: "none",
+                    transition: "border-color 0.15s ease, color 0.15s ease",
+                  }}
+                  className="hover:border-[var(--terra)] hover:text-[var(--ink)]"
                 >
-                  cancel
+                  cancel.
                 </Link>
               </div>
 
               {/* Spacer so the last input isn't hidden behind the sticky bar */}
-              <div aria-hidden="true" className="h-48 lg:h-20" />
+              <div aria-hidden="true" style={{ height: 192 }} className="lg:h-20" />
             </form>
           ) : null}
-        </section>
+        </div>
       </main>
 
       {/* Sticky delta bar — fixed to bottom, outside <main> to avoid overflow clipping.
           Hidden while any input is focused so the mobile keyboard doesn't push it into the content. */}
       {loadingState === "ready" && session && delta !== null && !isKeyboardOpen ? (
-        <div className="fixed bottom-0 left-0 right-0 z-10 border-t border-[var(--line)] bg-[#fffaf0] shadow-[0_-4px_20px_rgba(36,25,19,0.08)]">
-          <div className="mx-auto max-w-5xl px-5 sm:px-10">
+        <div
+          style={{
+            position: "fixed",
+            bottom: 0,
+            left: 0,
+            right: 0,
+            zIndex: 10,
+            borderTop: "1px solid var(--rule)",
+            background: "var(--bg-inset)",
+            boxShadow: "0 -4px 20px rgba(0,0,0,0.35)",
+          }}
+        >
+          <div
+            style={{ maxWidth: 1000, margin: "0 auto", padding: "0 20px" }}
+            className="sm:px-10"
+          >
             <div className="flex flex-col gap-3 py-3 lg:flex-row lg:items-center lg:justify-between lg:gap-6 lg:py-4">
               <div className="min-w-0 flex-1 text-center lg:text-left">
                 {delta === 0 ? (
-                  <p className="font-mono text-xs uppercase tracking-[0.16em] text-green-700">
+                  <p
+                    style={{
+                      fontFamily:
+                        "var(--font-jetbrains-mono), ui-monospace, monospace",
+                      fontSize: 11,
+                      letterSpacing: "0.16em",
+                      textTransform: "uppercase",
+                      color: "var(--pos)",
+                    }}
+                  >
                     ✓ chip counts match
                   </p>
                 ) : tableBank > 0 && Math.abs(delta) / tableBank > 0.5 ? (
-                  <p className="text-sm leading-5 text-[var(--terracotta)]">
+                  <p
+                    style={{ fontSize: 13, lineHeight: 1.5, color: "var(--terra)" }}
+                  >
                     Delta is too large to divide. Recount and edit buy-ins above.
                   </p>
                 ) : (
                   <>
-                    {/* Condensed on mobile */}
-                    <p className="text-sm leading-5 text-[var(--terracotta)] lg:hidden">
+                    <p
+                      style={{ fontSize: 13, lineHeight: 1.5, color: "var(--terra)" }}
+                      className="lg:hidden"
+                    >
                       {delta > 0
                         ? `Over by ${formatCurrency(Math.abs(delta))} (${formatCurrency(totalFinalChips)} / ${formatCurrency(tableBank)})`
                         : `Short by ${formatCurrency(Math.abs(delta))} (${formatCurrency(totalFinalChips)} / ${formatCurrency(tableBank)})`}
                     </p>
-                    {/* Full on desktop */}
-                    <p className="hidden text-sm leading-5 text-[var(--terracotta)] lg:block">
+                    <p
+                      style={{ fontSize: 13, lineHeight: 1.5, color: "var(--terra)" }}
+                      className="hidden lg:block"
+                    >
                       {delta > 0
                         ? `Chip counts are over by ${formatCurrency(Math.abs(delta))}. Players counted ${formatCurrency(totalFinalChips)} but table bank is ${formatCurrency(tableBank)}.`
                         : `Chip counts are short by ${formatCurrency(Math.abs(delta))}. Players counted ${formatCurrency(totalFinalChips)} but table bank is ${formatCurrency(tableBank)}.`}
@@ -531,26 +1068,61 @@ export function EndSessionForm({ sessionId }: { sessionId: string }) {
               {isHost ? (
                 <div className="flex w-full items-center lg:w-auto lg:shrink-0">
                   {delta === 0 ? (
-                    <button
+                    <motion.button
                       type="submit"
                       form="end-session-form"
                       disabled={isSaving}
-                      className="h-11 w-full border border-foreground bg-foreground px-4 font-mono text-xs uppercase tracking-[0.12em] text-background transition enabled:hover:bg-[var(--terracotta)] disabled:cursor-wait disabled:opacity-60 lg:h-10 lg:w-auto"
+                      whileTap={!isSaving ? { scale: 0.97 } : undefined}
+                      style={{
+                        flex: 1,
+                        height: 44,
+                        border: "1px solid var(--ink)",
+                        background: "var(--ink)",
+                        color: "var(--bg)",
+                        fontFamily:
+                          "var(--font-jetbrains-mono), ui-monospace, monospace",
+                        fontSize: 11,
+                        fontWeight: 500,
+                        letterSpacing: "0.12em",
+                        textTransform: "uppercase",
+                        cursor: isSaving ? "wait" : "pointer",
+                        opacity: isSaving ? 0.6 : 1,
+                        transition:
+                          "background 0.15s ease, border-color 0.15s ease",
+                      }}
+                      className="lg:h-10 lg:flex-none lg:px-5 enabled:hover:bg-[var(--terra)] enabled:hover:border-[var(--terra)]"
                     >
                       {isSaving
                         ? "saving..."
                         : isEditing
                           ? "save changes."
                           : "save & end session."}
-                    </button>
+                    </motion.button>
                   ) : tableBank > 0 && Math.abs(delta) / tableBank <= 0.5 ? (
-                    <button
+                    <motion.button
                       type="button"
                       onClick={handleDivideEqually}
-                      className="h-11 w-full border border-[var(--line)] px-4 font-mono text-xs uppercase tracking-[0.12em] text-[var(--ink-soft)] transition hover:border-[var(--terracotta)] hover:text-foreground lg:h-10 lg:w-auto"
+                      whileTap={{ scale: 0.97 }}
+                      style={{
+                        flex: 1,
+                        height: 44,
+                        border: "1px solid var(--rule-strong)",
+                        background: "transparent",
+                        color: "var(--ink-soft)",
+                        fontFamily:
+                          "var(--font-jetbrains-mono), ui-monospace, monospace",
+                        fontSize: 11,
+                        fontWeight: 500,
+                        letterSpacing: "0.12em",
+                        textTransform: "uppercase",
+                        cursor: "pointer",
+                        transition:
+                          "border-color 0.15s ease, color 0.15s ease",
+                      }}
+                      className="lg:h-10 lg:flex-none lg:px-5 hover:border-[var(--terra)] hover:text-[var(--ink)]"
                     >
                       divide {formatCurrency(Math.abs(delta))} equally
-                    </button>
+                    </motion.button>
                   ) : null}
                 </div>
               ) : null}
@@ -559,42 +1131,5 @@ export function EndSessionForm({ sessionId }: { sessionId: string }) {
         </div>
       ) : null}
     </>
-  );
-}
-
-function EndSessionMessage({
-  eyebrow,
-  headline,
-  body,
-}: {
-  eyebrow: string;
-  headline: string;
-  body?: string;
-}) {
-  return (
-    <div className="py-20">
-      <p className="font-mono text-sm uppercase tracking-[0.18em] text-[var(--terracotta)]">
-        {eyebrow}
-      </p>
-      <h1 className="mt-5 text-5xl font-semibold leading-none tracking-normal sm:text-6xl">
-        {headline}
-      </h1>
-      {body ? (
-        <p className="mt-6 max-w-xl text-lg leading-8 text-[var(--ink-soft)]">
-          {body}
-        </p>
-      ) : null}
-    </div>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="border border-[var(--line)] bg-[#fffaf0] p-4">
-      <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[var(--ink-soft)]">
-        {label}
-      </p>
-      <p className="mt-2 text-xl font-semibold leading-tight">{value}</p>
-    </div>
   );
 }
