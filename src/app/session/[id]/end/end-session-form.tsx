@@ -1,7 +1,6 @@
 "use client";
 
 import type { FormEvent } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
@@ -226,6 +225,16 @@ export function EndSessionForm({ sessionId }: { sessionId: string }) {
   );
 
   const delta = allChipsFilled ? totalFinalChips - tableBank : null;
+  const missingChipCounts = players.filter(
+    (player) => player.finalChips.trim() === "",
+  ).length;
+  const canSubmitFinalCounts = allChipsFilled && delta === 0 && isHost;
+  const showDeltaBar =
+    loadingState === "ready" &&
+    Boolean(session) &&
+    delta !== null &&
+    delta !== 0 &&
+    !isKeyboardOpen;
 
   useEffect(() => {
     let isMounted = true;
@@ -428,6 +437,10 @@ export function EndSessionForm({ sessionId }: { sessionId: string }) {
     setSubmitError("");
 
     if (!validatePlayers()) return;
+    if (delta !== 0) {
+      setSubmitError("chip counts don't match.");
+      return;
+    }
 
     setIsSaving(true);
 
@@ -973,17 +986,20 @@ export function EndSessionForm({ sessionId }: { sessionId: string }) {
                   paddingTop: 24,
                 }}
               >
-                <Link
-                  href={
-                    isEditing
-                      ? `/session/${sessionId}/summary`
-                      : `/session/${sessionId}`
+                <motion.button
+                  type="submit"
+                  disabled={!canSubmitFinalCounts || isSaving}
+                  whileTap={
+                    canSubmitFinalCounts && !isSaving ? { scale: 0.97 } : undefined
                   }
                   style={{
-                    display: "inline-flex",
+                    display: "flex",
                     alignItems: "center",
+                    justifyContent: "center",
+                    width: "100%",
                     height: 40,
-                    border: "1px solid var(--rule)",
+                    border: "1px solid var(--ink)",
+                    background: "var(--ink)",
                     padding: "0 20px",
                     fontFamily:
                       "var(--font-jetbrains-mono), ui-monospace, monospace",
@@ -991,18 +1007,48 @@ export function EndSessionForm({ sessionId }: { sessionId: string }) {
                     fontWeight: 500,
                     letterSpacing: "0.12em",
                     textTransform: "uppercase",
-                    color: "var(--ink-soft)",
-                    textDecoration: "none",
-                    transition: "border-color 0.15s ease, color 0.15s ease",
+                    color: "var(--bg)",
+                    cursor:
+                      canSubmitFinalCounts && !isSaving ? "pointer" : "not-allowed",
+                    opacity: canSubmitFinalCounts && !isSaving ? 1 : 0.42,
+                    transition:
+                      "background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease",
                   }}
-                  className="hover:border-[var(--terra)] hover:text-[var(--ink)]"
+                  className="sm:w-auto sm:px-6 enabled:hover:bg-[var(--terra)] enabled:hover:border-[var(--terra)]"
                 >
-                  cancel.
-                </Link>
+                  {isSaving
+                    ? "saving..."
+                    : isEditing
+                      ? "save changes."
+                      : "calculate p&l."}
+                </motion.button>
+                {!canSubmitFinalCounts ? (
+                  <p
+                    style={{
+                      marginTop: 10,
+                      fontFamily:
+                        "var(--font-jetbrains-mono), ui-monospace, monospace",
+                      fontSize: 11,
+                      letterSpacing: "0.12em",
+                      textTransform: "uppercase",
+                      color: "var(--ink-mute)",
+                    }}
+                  >
+                    {!allChipsFilled
+                      ? missingChipCounts > 0
+                        ? `${missingChipCounts} chip count${missingChipCounts === 1 ? "" : "s"} left.`
+                        : "fix final chip values."
+                      : "chip counts don't match."}
+                  </p>
+                ) : null}
               </div>
 
               {/* Spacer so the last input isn't hidden behind the sticky bar */}
-              <div aria-hidden="true" style={{ height: 192 }} className="lg:h-20" />
+              <div
+                aria-hidden="true"
+                style={{ height: showDeltaBar ? 144 : 40 }}
+                className={showDeltaBar ? "lg:h-20" : "lg:h-10"}
+              />
             </form>
           ) : null}
         </div>
@@ -1010,7 +1056,7 @@ export function EndSessionForm({ sessionId }: { sessionId: string }) {
 
       {/* Sticky delta bar — fixed to bottom, outside <main> to avoid overflow clipping.
           Hidden while any input is focused so the mobile keyboard doesn't push it into the content. */}
-      {loadingState === "ready" && session && delta !== null && !isKeyboardOpen ? (
+      {showDeltaBar ? (
         <div
           style={{
             position: "fixed",
