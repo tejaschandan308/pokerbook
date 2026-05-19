@@ -3,8 +3,10 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { supabase } from "@/lib/supabase";
 import { getStoredPin, storePin } from "@/lib/pin-auth";
+import { SuitRow } from "@/components/ui/suit-row";
 
 type Session = {
   id: string;
@@ -37,6 +39,257 @@ function formatCurrency(amount: number) {
   return currencyFormatter.format(amount);
 }
 
+/* ─── Animation constants ────────────────────────────────────────────────── */
+
+const ease = [0.2, 0.7, 0.2, 1] as const;
+
+const cardVariants = {
+  hidden: { opacity: 0, y: 16, scale: 0.97 },
+  show: { opacity: 1, y: 0, scale: 1, transition: { duration: 0.4, ease } },
+  exit: { opacity: 0, scale: 0.93, transition: { duration: 0.2 } },
+};
+
+const statVariants = {
+  hidden: { opacity: 0, y: 8 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.35, ease } },
+};
+
+function containerVariants(stagger = 0.07, delay = 0.1) {
+  return {
+    hidden: {},
+    show: { transition: { staggerChildren: stagger, delayChildren: delay } },
+  };
+}
+
+/* ─── Chip dots ──────────────────────────────────────────────────────────── */
+
+const CHIP_COLORS = [
+  "var(--chip-a)",
+  "var(--chip-b)",
+  "var(--chip-d)",
+  "var(--chip-a)",
+  "var(--chip-b)",
+  "var(--chip-d)",
+  "var(--chip-a)",
+  "var(--chip-b)",
+  "var(--chip-d)",
+  "var(--chip-a)",
+];
+
+function ChipDots({ count }: { count: number }) {
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+      <AnimatePresence initial={false}>
+        {Array.from({ length: count }).map((_, i) => (
+          <motion.div
+            key={i}
+            initial={i === count - 1 ? { opacity: 0, scale: 0 } : false}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0 }}
+            transition={{ duration: 0.25, ease: [0.34, 1.56, 0.64, 1] }}
+            style={{
+              width: 9,
+              height: 9,
+              borderRadius: "50%",
+              background: CHIP_COLORS[i % CHIP_COLORS.length],
+              flexShrink: 0,
+            }}
+          />
+        ))}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+/* ─── Stat card ──────────────────────────────────────────────────────────── */
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <motion.div
+      variants={statVariants}
+      style={{
+        border: "1px solid var(--rule)",
+        background: "var(--bg-card)",
+        padding: "14px 16px",
+      }}
+    >
+      <p
+        style={{
+          fontFamily: "var(--font-jetbrains-mono), ui-monospace, monospace",
+          fontSize: 10,
+          fontWeight: 500,
+          letterSpacing: "0.16em",
+          textTransform: "uppercase",
+          color: "var(--ink-mute)",
+        }}
+      >
+        {label}
+      </p>
+      <div style={{ marginTop: 8, overflow: "hidden", position: "relative" }}>
+        <AnimatePresence mode="popLayout" initial={false}>
+          <motion.p
+            key={value}
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 10 }}
+            transition={{ duration: 0.22, ease }}
+            style={{
+              fontFamily: "var(--font-instrument-serif), serif",
+              fontSize: 24,
+              fontWeight: 400,
+              lineHeight: 1.1,
+              letterSpacing: "-0.01em",
+              color: "var(--ink)",
+            }}
+          >
+            {value}
+          </motion.p>
+        </AnimatePresence>
+      </div>
+    </motion.div>
+  );
+}
+
+/* ─── Session message ────────────────────────────────────────────────────── */
+
+function SessionMessage({
+  eyebrow,
+  headline,
+  body,
+}: {
+  eyebrow: string;
+  headline: string;
+  body?: string;
+}) {
+  return (
+    <div style={{ paddingTop: 80, paddingBottom: 80 }}>
+      <p
+        style={{
+          fontFamily: "var(--font-jetbrains-mono), ui-monospace, monospace",
+          fontSize: 11,
+          fontWeight: 500,
+          letterSpacing: "0.16em",
+          textTransform: "uppercase",
+          color: "var(--terra)",
+        }}
+      >
+        {eyebrow}
+      </p>
+      <h1
+        style={{
+          fontFamily: "var(--font-instrument-serif), serif",
+          fontSize: "clamp(48px, 10vw, 96px)",
+          fontWeight: 400,
+          lineHeight: 0.95,
+          letterSpacing: "-0.02em",
+          color: "var(--ink)",
+          marginTop: 20,
+        }}
+      >
+        {headline}
+      </h1>
+      {body ? (
+        <p
+          style={{
+            fontSize: 15,
+            lineHeight: 1.6,
+            color: "var(--ink-soft)",
+            marginTop: 20,
+            maxWidth: 480,
+          }}
+        >
+          {body}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+/* ─── Modal shell ────────────────────────────────────────────────────────── */
+
+function ModalShell({ children }: { children: React.ReactNode }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 50,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "rgba(0,0,0,0.65)",
+        backdropFilter: "blur(4px)",
+        padding: 20,
+      }}
+    >
+      <motion.div
+        initial={{ scale: 0.96, y: 8 }}
+        animate={{ scale: 1, y: 0 }}
+        exit={{ scale: 0.96, y: 8 }}
+        transition={{ duration: 0.2, ease }}
+        style={{
+          width: "100%",
+          maxWidth: 360,
+          background: "var(--bg-card)",
+          border: "1px solid var(--rule-strong)",
+          padding: 24,
+        }}
+      >
+        {children}
+      </motion.div>
+    </motion.div>
+  );
+}
+
+const modalEyebrow: React.CSSProperties = {
+  fontFamily: "var(--font-jetbrains-mono), ui-monospace, monospace",
+  fontSize: 10,
+  fontWeight: 500,
+  letterSpacing: "0.18em",
+  textTransform: "uppercase",
+  color: "var(--terra)",
+};
+
+const modalHeading: React.CSSProperties = {
+  fontFamily: "var(--font-instrument-serif), serif",
+  fontSize: 26,
+  fontWeight: 400,
+  letterSpacing: "-0.01em",
+  color: "var(--ink)",
+  marginTop: 12,
+};
+
+const modalBody: React.CSSProperties = {
+  fontSize: 14,
+  lineHeight: 1.5,
+  color: "var(--ink-soft)",
+  marginTop: 8,
+};
+
+const modalBtnRow: React.CSSProperties = {
+  marginTop: 16,
+  display: "flex",
+  gap: 10,
+};
+
+const monoBtn: React.CSSProperties = {
+  flex: 1,
+  height: 40,
+  background: "transparent",
+  fontFamily: "var(--font-jetbrains-mono), ui-monospace, monospace",
+  fontSize: 11,
+  fontWeight: 500,
+  letterSpacing: "0.12em",
+  textTransform: "uppercase",
+  cursor: "pointer",
+  transition: "background 0.15s ease, color 0.15s ease, border-color 0.15s ease",
+};
+
+/* ─── Main component ─────────────────────────────────────────────────────── */
+
 export function SessionView({ sessionId }: SessionViewProps) {
   const router = useRouter();
   const [session, setSession] = useState<Session | null>(null);
@@ -52,11 +305,9 @@ export function SessionView({ sessionId }: SessionViewProps) {
   const [addPlayerError, setAddPlayerError] = useState("");
   const [isAddingPlayer, setIsAddingPlayer] = useState(false);
 
-  // Delete player state
   const [deletePlayerId, setDeletePlayerId] = useState<string | null>(null);
   const [isDeletingPlayer, setIsDeletingPlayer] = useState(false);
 
-  // PIN / host auth state
   const [sessionHasPin, setSessionHasPin] = useState(false);
   const [isHost, setIsHost] = useState(false);
   const [showPinModal, setShowPinModal] = useState(false);
@@ -90,9 +341,7 @@ export function SessionView({ sessionId }: SessionViewProps) {
         .eq("id", sessionId)
         .single();
 
-      if (!isMounted) {
-        return;
-      }
+      if (!isMounted) return;
 
       if (sessionError || !sessionData) {
         setLoadingState("missing");
@@ -110,9 +359,7 @@ export function SessionView({ sessionId }: SessionViewProps) {
         .eq("session_id", sessionId)
         .order("created_at", { ascending: true });
 
-      if (!isMounted) {
-        return;
-      }
+      if (!isMounted) return;
 
       if (playersError || !playerData) {
         setLoadingState("error");
@@ -120,25 +367,20 @@ export function SessionView({ sessionId }: SessionViewProps) {
         return;
       }
 
-      // Check whether this session requires a PIN
-      const { data: hasPinData } = await supabase
-        .rpc("session_has_pin", { p_session_id: sessionId });
+      const { data: hasPinData } = await supabase.rpc("session_has_pin", {
+        p_session_id: sessionId,
+      });
 
-      if (!isMounted) {
-        return;
-      }
+      if (!isMounted) return;
 
       const requiresPin = !!hasPinData;
       setSessionHasPin(requiresPin);
 
       if (!requiresPin) {
-        // Legacy session with no PIN — everyone can edit
         setIsHost(true);
       } else {
         const storedPin = getStoredPin(sessionId);
-        if (storedPin) {
-          setIsHost(true);
-        }
+        if (storedPin) setIsHost(true);
       }
 
       setSession(sessionData);
@@ -147,13 +389,9 @@ export function SessionView({ sessionId }: SessionViewProps) {
     }
 
     loadSession();
-
-    return () => {
-      isMounted = false;
-    };
+    return () => { isMounted = false; };
   }, [router, sessionId]);
 
-  // Realtime: propagate player deletions to all viewers of this session.
   useEffect(() => {
     if (!supabase) return;
 
@@ -176,30 +414,21 @@ export function SessionView({ sessionId }: SessionViewProps) {
       )
       .subscribe();
 
-    return () => {
-      supabase?.removeChannel(channel);
-    };
+    return () => { supabase?.removeChannel(channel); };
   }, [sessionId]);
 
   async function refreshPlayers() {
-    if (!supabase) {
-      return;
-    }
-
+    if (!supabase) return;
     const { data } = await supabase
       .from("players")
       .select("id,name,total_buy_ins,final_chips,created_at")
       .eq("session_id", sessionId)
       .order("created_at", { ascending: true });
-
-    if (data) {
-      setPlayers(data);
-    }
+    if (data) setPlayers(data);
   }
 
   async function verifyPin() {
     if (!supabase || isVerifyingPin || pinInput.length !== 4) return;
-
     setIsVerifyingPin(true);
     setPinError("");
 
@@ -210,15 +439,8 @@ export function SessionView({ sessionId }: SessionViewProps) {
 
     setIsVerifyingPin(false);
 
-    if (error) {
-      setPinError("something went wrong. try again.");
-      return;
-    }
-
-    if (!isValid) {
-      setPinError("wrong PIN. try again.");
-      return;
-    }
+    if (error) { setPinError("something went wrong. try again."); return; }
+    if (!isValid) { setPinError("wrong PIN. try again."); return; }
 
     storePin(sessionId, pinInput);
     setIsHost(true);
@@ -240,17 +462,13 @@ export function SessionView({ sessionId }: SessionViewProps) {
 
   async function addPlayer() {
     if (!supabase || isAddingPlayer) return;
-
     const trimmed = newPlayerName.trim();
     if (!trimmed) return;
 
     const isDuplicate = players.some(
       (p) => p.name.toLowerCase() === trimmed.toLowerCase(),
     );
-    if (isDuplicate) {
-      setAddPlayerError("already in the game.");
-      return;
-    }
+    if (isDuplicate) { setAddPlayerError("already in the game."); return; }
 
     setIsAddingPlayer(true);
     setAddPlayerError("");
@@ -284,13 +502,12 @@ export function SessionView({ sessionId }: SessionViewProps) {
       setCopyState("copied");
       setTimeout(() => setCopyState("idle"), 2000);
     } catch {
-      // Clipboard not available — silently fail
+      // Clipboard not available
     }
   }
 
   async function deletePlayer() {
     if (!supabase || !deletePlayerId || isDeletingPlayer) return;
-
     setIsDeletingPlayer(true);
     setErrorMessage("");
 
@@ -308,17 +525,13 @@ export function SessionView({ sessionId }: SessionViewProps) {
       return;
     }
 
-    // Optimistically remove from local state; realtime will sync other viewers.
     setPlayers((current) => current.filter((p) => p.id !== deletePlayerId));
     setDeletePlayerId(null);
     setIsDeletingPlayer(false);
   }
 
   async function addBuyIn(player: Player) {
-    if (!supabase || pendingPlayerId) {
-      return;
-    }
-
+    if (!supabase || pendingPlayerId) return;
     setPendingPlayerId(player.id);
     setErrorMessage("");
 
@@ -346,18 +559,24 @@ export function SessionView({ sessionId }: SessionViewProps) {
   }
 
   return (
-    <main className="min-h-screen overflow-x-hidden bg-background px-5 py-6 text-foreground sm:px-10 sm:py-8">
-      {/* PIN modal */}
-      {showPinModal ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-5">
-          <div className="w-full max-w-sm border border-[var(--line)] bg-background p-6 shadow-xl">
-            <p className="font-mono text-xs uppercase tracking-[0.18em] text-[var(--terracotta)]">
-              host PIN
-            </p>
-            <h2 className="mt-3 text-2xl font-semibold">unlock to edit.</h2>
-            <p className="mt-2 text-sm text-[var(--ink-soft)]">
-              Enter the 4-digit host PIN to enable edit mode.
-            </p>
+    <main
+      style={{
+        background: "var(--bg)",
+        color: "var(--ink)",
+        minHeight: "100vh",
+        position: "relative",
+        overflowX: "hidden",
+      }}
+    >
+      <div className="felt-motif" />
+
+      {/* ── PIN modal ── */}
+      <AnimatePresence>
+        {showPinModal ? (
+          <ModalShell>
+            <p style={modalEyebrow}>host PIN</p>
+            <h2 style={modalHeading}>unlock to edit.</h2>
+            <p style={modalBody}>Enter the 4-digit host PIN to enable edit mode.</p>
             <input
               autoFocus
               type="text"
@@ -375,122 +594,258 @@ export function SessionView({ sessionId }: SessionViewProps) {
                 if (e.key === "Escape") cancelPinModal();
               }}
               placeholder="----"
-              className="mt-4 h-14 w-full border border-[var(--line)] bg-background px-3 text-center font-mono text-3xl tracking-[0.5em] outline-none transition focus:border-[var(--terracotta)]"
+              style={{
+                marginTop: 16,
+                height: 56,
+                width: "100%",
+                border: "1px solid var(--rule)",
+                background: "var(--bg-elev)",
+                padding: "0 12px",
+                textAlign: "center",
+                fontFamily: "var(--font-jetbrains-mono), ui-monospace, monospace",
+                fontSize: 28,
+                letterSpacing: "0.5em",
+                color: "var(--ink)",
+                outline: "none",
+                transition: "border-color 0.15s ease",
+              }}
+              className="focus:border-[var(--terra)]"
             />
             {pinError ? (
-              <p className="mt-2 text-sm text-[var(--terracotta)]">
+              <p style={{ marginTop: 8, fontSize: 13, color: "var(--terra)" }}>
                 {pinError}
               </p>
             ) : null}
-            <div className="mt-4 flex gap-3">
-              <button
+            <div style={modalBtnRow}>
+              <motion.button
                 type="button"
                 onClick={cancelPinModal}
-                className="h-10 flex-1 border border-[var(--line)] font-mono text-xs uppercase tracking-[0.12em] text-[var(--ink-soft)] transition hover:border-[var(--terracotta)] hover:text-foreground"
+                whileTap={{ scale: 0.97 }}
+                style={{
+                  ...monoBtn,
+                  border: "1px solid var(--rule)",
+                  color: "var(--ink-soft)",
+                }}
+                className="hover:border-[var(--terra)] hover:text-[var(--ink)]"
               >
                 cancel.
-              </button>
-              <button
+              </motion.button>
+              <motion.button
                 type="button"
                 onClick={verifyPin}
                 disabled={pinInput.length !== 4 || isVerifyingPin}
-                className="h-10 flex-1 border border-foreground bg-foreground font-mono text-xs uppercase tracking-[0.12em] text-background transition enabled:hover:bg-[var(--terracotta)] disabled:cursor-not-allowed disabled:opacity-50"
+                whileTap={{ scale: 0.97 }}
+                style={{
+                  ...monoBtn,
+                  border: "1px solid var(--ink)",
+                  background: "var(--ink)",
+                  color: "var(--bg)",
+                }}
+                className="enabled:hover:bg-[var(--terra)] enabled:hover:border-[var(--terra)] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isVerifyingPin ? "checking..." : "unlock."}
-              </button>
+              </motion.button>
             </div>
-          </div>
-        </div>
-      ) : null}
+          </ModalShell>
+        ) : null}
+      </AnimatePresence>
 
-      {/* Delete player confirmation modal */}
-      {deletePlayerId ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-5">
-          <div className="w-full max-w-sm border border-[var(--line)] bg-background p-6 shadow-xl">
-            <p className="font-mono text-xs uppercase tracking-[0.18em] text-[var(--terracotta)]">
-              confirm
-            </p>
-            <h2 className="mt-3 text-2xl font-semibold">
-              Delete {players.find((p) => p.id === deletePlayerId)?.name}?
+      {/* ── Delete confirmation modal ── */}
+      <AnimatePresence>
+        {deletePlayerId ? (
+          <ModalShell>
+            <p style={modalEyebrow}>confirm</p>
+            <h2 style={modalHeading}>
+              Remove {players.find((p) => p.id === deletePlayerId)?.name}?
             </h2>
-            <p className="mt-2 text-sm text-[var(--ink-soft)]">
+            <p style={modalBody}>
               This will remove the player AND their buy-ins from the table bank.
             </p>
-            <div className="mt-4 flex gap-3">
-              <button
+            <div style={modalBtnRow}>
+              <motion.button
                 type="button"
                 onClick={() => setDeletePlayerId(null)}
                 disabled={isDeletingPlayer}
-                className="h-10 flex-1 border border-[var(--line)] font-mono text-xs uppercase tracking-[0.12em] text-[var(--ink-soft)] transition hover:border-[var(--terracotta)] hover:text-foreground disabled:opacity-50"
+                whileTap={{ scale: 0.97 }}
+                style={{
+                  ...monoBtn,
+                  border: "1px solid var(--rule)",
+                  color: "var(--ink-soft)",
+                }}
+                className="hover:border-[var(--terra)] hover:text-[var(--ink)] disabled:opacity-50"
               >
                 cancel.
-              </button>
-              <button
+              </motion.button>
+              <motion.button
                 type="button"
                 onClick={deletePlayer}
                 disabled={isDeletingPlayer}
-                className="h-10 flex-1 border border-[var(--terracotta)] bg-[var(--terracotta)] font-mono text-xs uppercase tracking-[0.12em] text-background transition enabled:hover:bg-background enabled:hover:text-[var(--terracotta)] disabled:cursor-wait disabled:opacity-50"
+                whileTap={{ scale: 0.97 }}
+                style={{
+                  ...monoBtn,
+                  border: "1px solid var(--terra)",
+                  background: "var(--terra)",
+                  color: "var(--bg)",
+                }}
+                className="enabled:hover:bg-transparent enabled:hover:text-[var(--terra)] disabled:cursor-wait disabled:opacity-50"
               >
                 {isDeletingPlayer ? "removing..." : "delete."}
-              </button>
+              </motion.button>
+            </div>
+          </ModalShell>
+        ) : null}
+      </AnimatePresence>
+
+      <div
+        style={{
+          position: "relative",
+          zIndex: 1,
+          maxWidth: 1000,
+          margin: "0 auto",
+          padding: "0 20px 80px",
+        }}
+        className="sm:px-10"
+      >
+        {/* ── Header bar ── */}
+        <div style={{ paddingTop: 14, paddingBottom: 16 }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
+          >
+            <Link
+              href="/"
+              className="wordmark-link"
+              style={{
+                fontFamily: "var(--font-jetbrains-mono), ui-monospace, monospace",
+                fontSize: 12,
+                fontWeight: 500,
+                letterSpacing: "0.16em",
+                textTransform: "uppercase",
+              }}
+            >
+              pokerbook
+            </Link>
+            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+              {loadingState === "ready" ? (
+                <span
+                  style={{
+                    fontFamily: "var(--font-jetbrains-mono), ui-monospace, monospace",
+                    fontSize: 11,
+                    fontWeight: 500,
+                    letterSpacing: "0.16em",
+                    textTransform: "uppercase",
+                    color: "var(--felt)",
+                  }}
+                >
+                  {isHost ? "live · edit" : "live now"}
+                </span>
+              ) : null}
+              <SuitRow size={11} />
             </div>
           </div>
+          <div style={{ borderTop: "1px solid var(--rule)", marginTop: 12 }} />
         </div>
-      ) : null}
 
-      <section className="mx-auto w-full max-w-5xl">
-        <nav className="flex items-center justify-between gap-4 border-b border-[var(--line)] pb-5 font-mono text-xs uppercase tracking-[0.18em] text-[var(--ink-soft)]">
-          <Link href="/" className="transition hover:text-[var(--terracotta)]">
-            pokerbook
-          </Link>
-          <span className="text-[var(--table-green)]">
-            {loadingState !== "ready"
-              ? "loading"
-              : isHost
-                ? "active · edit"
-                : "active"}
-          </span>
-        </nav>
-
-        {loadingState === "loading" ? (
+        {loadingState === "loading" && (
           <SessionMessage eyebrow="loading" headline="finding the table." />
-        ) : null}
-
-        {loadingState === "missing" ? (
+        )}
+        {loadingState === "missing" && (
           <SessionMessage
             eyebrow="not found"
             headline="no table here."
             body="Check the link and try again."
           />
-        ) : null}
-
-        {loadingState === "error" ? (
+        )}
+        {loadingState === "error" && (
           <SessionMessage
             eyebrow="blocked"
             headline="couldn't load this one."
             body={errorMessage || "Try refreshing the page."}
           />
-        ) : null}
+        )}
 
         {loadingState === "ready" && session ? (
-          <div className="py-8 sm:py-12">
-            <header className="grid gap-6 border-b border-[var(--line)] pb-8 lg:grid-cols-[1fr_auto] lg:items-end">
+          <div style={{ paddingTop: 32 }}>
+            {/* ── Page header ── */}
+            <header
+              style={{
+                display: "grid",
+                gap: 24,
+                borderBottom: "1px solid var(--rule)",
+                paddingBottom: 32,
+              }}
+              className="lg:grid-cols-[1fr_auto] lg:items-end"
+            >
               <div>
-                <p className="font-mono text-sm uppercase tracking-[0.18em] text-[var(--terracotta)]">
-                  {"♠"} active session
+                <p
+                  style={{
+                    fontFamily: "var(--font-jetbrains-mono), ui-monospace, monospace",
+                    fontSize: 11,
+                    fontWeight: 500,
+                    letterSpacing: "0.16em",
+                    textTransform: "uppercase",
+                    color: "var(--terra)",
+                  }}
+                >
+                  ♠ active session
                 </p>
-                <h1 className="mt-4 text-5xl font-semibold leading-none tracking-normal sm:text-7xl">
-                  {session.name || "poker night."}
+
+                <h1
+                  style={{
+                    fontFamily: "var(--font-instrument-serif), serif",
+                    fontSize: "clamp(40px, 8vw, 80px)",
+                    fontWeight: 400,
+                    lineHeight: 0.95,
+                    letterSpacing: "-0.02em",
+                    color: "var(--ink)",
+                    marginTop: 14,
+                  }}
+                >
+                  {session.name || "poker night"}
+                  <span style={{ color: "var(--terra)", fontStyle: "italic" }}>.</span>
                 </h1>
-                <p className="mt-5 max-w-2xl text-base leading-7 text-[var(--ink-soft)] sm:text-lg">
-                  Tap once when someone re-buys. Everyone starts with one
-                  buy-in.
+
+                <p
+                  style={{
+                    fontFamily: "var(--font-jetbrains-mono), ui-monospace, monospace",
+                    fontSize: 11,
+                    fontWeight: 500,
+                    letterSpacing: "0.18em",
+                    textTransform: "uppercase",
+                    color: "var(--felt)",
+                    marginTop: 14,
+                  }}
+                >
+                  live now · {players.length} at the table
                 </p>
+
                 {isHost ? (
-                  <button
+                  <motion.button
                     type="button"
                     onClick={copyLink}
-                    className="mt-5 inline-flex h-11 items-center gap-2 border border-[var(--table-green)] px-4 font-mono text-xs uppercase tracking-[0.12em] text-[var(--table-green)] transition hover:bg-[var(--table-green)] hover:text-background"
+                    whileTap={{ scale: 0.97 }}
+                    style={{
+                      marginTop: 20,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 8,
+                      height: 40,
+                      border: "1px solid var(--felt)",
+                      padding: "0 16px",
+                      fontFamily: "var(--font-jetbrains-mono), ui-monospace, monospace",
+                      fontSize: 11,
+                      fontWeight: 500,
+                      letterSpacing: "0.12em",
+                      textTransform: "uppercase",
+                      color: "var(--felt)",
+                      background: "transparent",
+                      cursor: "pointer",
+                      transition: "background 0.15s ease, color 0.15s ease",
+                    }}
+                    className="hover:bg-[var(--felt)] hover:text-[var(--bg)]"
                   >
                     {copyState === "copied" ? (
                       "copied."
@@ -514,123 +869,365 @@ export function SessionView({ sessionId }: SessionViewProps) {
                         copy link.
                       </>
                     )}
-                  </button>
+                  </motion.button>
                 ) : null}
               </div>
 
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:min-w-[460px]">
+              {/* Stat cards */}
+              <motion.div
+                variants={containerVariants(0.07, 0.2)}
+                initial="hidden"
+                animate="show"
+                style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}
+                className="lg:min-w-[440px]"
+              >
                 <Stat label="buy-in" value={formatCurrency(session.buy_in_amount)} />
                 <Stat label="total buy-ins" value={String(totalBuyIns)} />
                 <Stat label="table bank" value={formatCurrency(tableBank)} />
-              </div>
+              </motion.div>
             </header>
 
             {/* View-only banner */}
             {!isHost && sessionHasPin ? (
-              <button
+              <motion.button
                 type="button"
                 onClick={() => setShowPinModal(true)}
-                className="mt-5 flex w-full cursor-pointer items-center justify-between border border-[var(--line)] bg-[#fffaf0] px-4 py-3 text-left transition hover:border-[var(--terracotta)]"
+                whileTap={{ scale: 0.99 }}
+                style={{
+                  marginTop: 20,
+                  display: "flex",
+                  width: "100%",
+                  cursor: "pointer",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  border: "1px solid var(--rule)",
+                  background: "var(--bg-card)",
+                  padding: "12px 16px",
+                  textAlign: "left",
+                  transition: "border-color 0.15s ease",
+                }}
+                className="hover:border-[var(--terra)]"
               >
-                <span className="font-mono text-xs uppercase tracking-[0.16em] text-[var(--ink-soft)]">
+                <span
+                  style={{
+                    fontFamily: "var(--font-jetbrains-mono), ui-monospace, monospace",
+                    fontSize: 11,
+                    fontWeight: 500,
+                    letterSpacing: "0.16em",
+                    textTransform: "uppercase",
+                    color: "var(--ink-soft)",
+                  }}
+                >
                   view only · enter host PIN to edit
                 </span>
-                <span className="shrink-0 font-mono text-xs text-[var(--terracotta)]">
+                <span
+                  style={{
+                    flexShrink: 0,
+                    fontFamily: "var(--font-jetbrains-mono), ui-monospace, monospace",
+                    fontSize: 11,
+                    color: "var(--terra)",
+                  }}
+                >
                   unlock →
                 </span>
-              </button>
+              </motion.button>
             ) : null}
 
             {errorMessage ? (
-              <p className="mt-5 border border-[var(--terracotta)] bg-[#fffaf0] p-3 text-sm text-[var(--terracotta)]">
+              <p
+                style={{
+                  marginTop: 20,
+                  border: "1px solid var(--terra)",
+                  background: "var(--bg-card)",
+                  padding: 12,
+                  fontSize: 13,
+                  color: "var(--terra)",
+                }}
+              >
                 {errorMessage}
               </p>
             ) : null}
 
-            <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {players.map((player) => {
-                const playerInFor = player.total_buy_ins * session.buy_in_amount;
-                const isPending = pendingPlayerId === player.id;
+            {/* Player cards */}
+            <motion.div
+              variants={containerVariants(0.06, 0.35)}
+              initial="hidden"
+              animate="show"
+              style={{ marginTop: 24, display: "grid", gap: 14 }}
+              className="sm:grid-cols-2 lg:grid-cols-3"
+            >
+              <AnimatePresence mode="popLayout">
+                {players.map((player) => {
+                  const playerInFor = player.total_buy_ins * session.buy_in_amount;
+                  const isPending = pendingPlayerId === player.id;
 
-                return (
-                  <article
-                    key={player.id}
-                    className="min-w-0 border border-[var(--line)] bg-[#fffaf0] p-5 shadow-[0_18px_60px_rgba(36,25,19,0.07)]"
-                  >
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="min-w-0">
-                        <p className="truncate text-2xl font-semibold leading-tight">
-                          {player.name}
-                        </p>
-                        <p className="mt-2 font-mono text-xs uppercase tracking-[0.16em] text-[var(--ink-soft)]">
-                          in for {formatCurrency(playerInFor)}
-                        </p>
-                      </div>
-                      <div className="flex shrink-0 flex-col items-end gap-1">
-                        {isHost ? (
-                          <button
-                            type="button"
-                            onClick={() => setDeletePlayerId(player.id)}
-                            disabled={Boolean(pendingPlayerId)}
-                            aria-label={`Remove ${player.name}`}
-                            className="flex h-8 w-8 items-center justify-center text-base text-[var(--ink-soft)] transition hover:text-[var(--terracotta)] disabled:opacity-40"
+                  return (
+                    <motion.article
+                      key={player.id}
+                      layout
+                      variants={cardVariants}
+                      exit="exit"
+                      style={{
+                        minWidth: 0,
+                        border: "1px solid var(--rule)",
+                        background: "var(--bg-card)",
+                        padding: 20,
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "flex-start",
+                          justifyContent: "space-between",
+                          gap: 12,
+                        }}
+                      >
+                        <div style={{ minWidth: 0 }}>
+                          <p
+                            style={{
+                              fontFamily: "var(--font-instrument-serif), serif",
+                              fontStyle: "italic",
+                              fontSize: 24,
+                              fontWeight: 400,
+                              letterSpacing: "-0.01em",
+                              lineHeight: 1.1,
+                              color: "var(--ink)",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
                           >
-                            ×
-                          </button>
-                        ) : null}
-                        <span className="font-serif text-3xl italic text-[var(--terracotta)]">
-                          {player.total_buy_ins}
-                        </span>
-                      </div>
-                    </div>
+                            {player.name}
+                          </p>
+                          <p
+                            style={{
+                              marginTop: 6,
+                              fontFamily: "var(--font-jetbrains-mono), ui-monospace, monospace",
+                              fontSize: 10,
+                              fontWeight: 500,
+                              letterSpacing: "0.16em",
+                              textTransform: "uppercase",
+                              color: "var(--ink-mute)",
+                            }}
+                          >
+                            in for {formatCurrency(playerInFor)}
+                          </p>
+                        </div>
 
-                    <div className="mt-7 flex items-end justify-between gap-4">
-                      <div>
-                        <p className="font-mono text-xs uppercase tracking-[0.16em] text-[var(--ink-soft)]">
+                        <div
+                          style={{
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "flex-end",
+                            gap: 2,
+                            flexShrink: 0,
+                          }}
+                        >
+                          {isHost ? (
+                            <motion.button
+                              type="button"
+                              onClick={() => setDeletePlayerId(player.id)}
+                              disabled={Boolean(pendingPlayerId)}
+                              aria-label={`Remove ${player.name}`}
+                              whileTap={{ scale: 0.9 }}
+                              style={{
+                                display: "flex",
+                                height: 28,
+                                width: 28,
+                                alignItems: "center",
+                                justifyContent: "center",
+                                fontSize: 18,
+                                color: "var(--ink-mute)",
+                                background: "transparent",
+                                border: "none",
+                                cursor: "pointer",
+                                transition: "color 0.15s ease",
+                              }}
+                              className="hover:text-[var(--terra)] disabled:opacity-40"
+                            >
+                              ×
+                            </motion.button>
+                          ) : null}
+                          <div
+                            style={{
+                              overflow: "hidden",
+                              minWidth: 28,
+                              textAlign: "right",
+                            }}
+                          >
+                            <AnimatePresence mode="popLayout" initial={false}>
+                              <motion.span
+                                key={player.total_buy_ins}
+                                initial={{ opacity: 0, y: -10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: 10 }}
+                                transition={{ duration: 0.2, ease }}
+                                style={{
+                                  display: "block",
+                                  fontFamily: "var(--font-instrument-serif), serif",
+                                  fontStyle: "italic",
+                                  fontSize: 32,
+                                  fontWeight: 400,
+                                  lineHeight: 1,
+                                  color: "var(--terra)",
+                                }}
+                              >
+                                {player.total_buy_ins}
+                              </motion.span>
+                            </AnimatePresence>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div style={{ marginTop: 16 }}>
+                        <ChipDots count={player.total_buy_ins} />
+                      </div>
+
+                      <div
+                        style={{
+                          marginTop: 16,
+                          display: "flex",
+                          alignItems: "flex-end",
+                          justifyContent: "space-between",
+                          gap: 12,
+                        }}
+                      >
+                        <p
+                          style={{
+                            fontFamily: "var(--font-jetbrains-mono), ui-monospace, monospace",
+                            fontSize: 10,
+                            fontWeight: 500,
+                            letterSpacing: "0.16em",
+                            textTransform: "uppercase",
+                            color: "var(--ink-mute)",
+                          }}
+                        >
                           buy-ins
                         </p>
-                        <p className="mt-1 text-sm text-[var(--ink-soft)]">
-                          total so far
-                        </p>
+                        {isHost ? (
+                          <motion.button
+                            type="button"
+                            onClick={() => addBuyIn(player)}
+                            disabled={Boolean(pendingPlayerId)}
+                            whileTap={{ scale: 0.96 }}
+                            style={{
+                              height: 40,
+                              border: "1px solid var(--terra)",
+                              padding: "0 16px",
+                              fontFamily: "var(--font-jetbrains-mono), ui-monospace, monospace",
+                              fontSize: 11,
+                              fontWeight: 500,
+                              letterSpacing: "0.12em",
+                              textTransform: "uppercase",
+                              color: "var(--terra)",
+                              background: "transparent",
+                              cursor: "pointer",
+                              transition: "background 0.15s ease, color 0.15s ease",
+                            }}
+                            className="enabled:hover:bg-[var(--terra)] enabled:hover:text-[var(--bg)] disabled:cursor-wait disabled:opacity-50"
+                          >
+                            {isPending ? "adding..." : "+1 buy-in."}
+                          </motion.button>
+                        ) : null}
                       </div>
-                      {isHost ? (
-                        <button
-                          type="button"
-                          onClick={() => addBuyIn(player)}
-                          disabled={Boolean(pendingPlayerId)}
-                          className="h-11 border border-[var(--table-green)] px-4 font-mono text-xs uppercase tracking-[0.12em] text-[var(--table-green)] transition enabled:hover:bg-[var(--table-green)] enabled:hover:text-background disabled:cursor-wait disabled:opacity-50"
-                        >
-                          {isPending ? "adding..." : "+1 buy-in."}
-                        </button>
-                      ) : null}
-                    </div>
-                  </article>
-                );
-              })}
+                    </motion.article>
+                  );
+                })}
 
-              {/* Ghost tile — add player */}
-              {isHost ? (
-                players.length >= MAX_PLAYERS ? (
-                  <article className="flex min-h-[160px] min-w-0 flex-col items-center justify-center border border-dashed border-[var(--line)] p-5 opacity-50">
-                    <p className="font-mono text-xs uppercase tracking-[0.14em] text-[var(--ink-soft)]">
+                {/* Ghost tile: add player */}
+                {isHost && players.length >= MAX_PLAYERS && (
+                  <motion.article
+                    key="ghost-full"
+                    variants={cardVariants}
+                    style={{
+                      display: "flex",
+                      minHeight: 160,
+                      minWidth: 0,
+                      flexDirection: "column",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      border: "1px dashed var(--rule)",
+                      padding: 20,
+                      opacity: 0.5,
+                    }}
+                  >
+                    <p
+                      style={{
+                        fontFamily: "var(--font-jetbrains-mono), ui-monospace, monospace",
+                        fontSize: 10,
+                        fontWeight: 500,
+                        letterSpacing: "0.14em",
+                        textTransform: "uppercase",
+                        color: "var(--ink-mute)",
+                      }}
+                    >
                       session full.
                     </p>
-                  </article>
-                ) : ghostState === "idle" ? (
-                  <article
+                  </motion.article>
+                )}
+
+                {isHost && players.length < MAX_PLAYERS && ghostState === "idle" && (
+                  <motion.article
+                    key="ghost-add"
+                    variants={cardVariants}
                     onClick={() => setGhostState("form")}
-                    className="flex min-h-[160px] min-w-0 cursor-pointer flex-col items-center justify-center border border-dashed border-[var(--line)] p-5 transition hover:border-[var(--ink-soft)] hover:bg-[#fffaf0]"
+                    whileTap={{ scale: 0.98 }}
+                    style={{
+                      display: "flex",
+                      minHeight: 160,
+                      minWidth: 0,
+                      cursor: "pointer",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      border: "1px dashed var(--rule)",
+                      padding: 20,
+                      transition: "border-color 0.15s ease, background 0.15s ease",
+                    }}
+                    className="hover:border-[var(--ink-mute)] hover:bg-[var(--bg-elev)]"
                   >
-                    <span className="text-3xl font-light text-[var(--ink-soft)]">
+                    <span
+                      style={{ fontSize: 28, fontWeight: 300, color: "var(--ink-mute)" }}
+                    >
                       +
                     </span>
-                    <p className="mt-2 font-mono text-xs uppercase tracking-[0.14em] text-[var(--ink-soft)]">
+                    <p
+                      style={{
+                        marginTop: 8,
+                        fontFamily: "var(--font-jetbrains-mono), ui-monospace, monospace",
+                        fontSize: 10,
+                        fontWeight: 500,
+                        letterSpacing: "0.14em",
+                        textTransform: "uppercase",
+                        color: "var(--ink-mute)",
+                      }}
+                    >
                       add player.
                     </p>
-                  </article>
-                ) : (
-                  <article className="min-w-0 border border-[var(--line)] bg-[#fffaf0] p-5 shadow-[0_18px_60px_rgba(36,25,19,0.07)]">
-                    <p className="font-mono text-xs uppercase tracking-[0.16em] text-[var(--ink-soft)]">
+                  </motion.article>
+                )}
+
+                {isHost && players.length < MAX_PLAYERS && ghostState === "form" && (
+                  <motion.article
+                    key="ghost-form"
+                    variants={cardVariants}
+                    style={{
+                      minWidth: 0,
+                      border: "1px solid var(--rule)",
+                      background: "var(--bg-card)",
+                      padding: 20,
+                    }}
+                  >
+                    <p
+                      style={{
+                        fontFamily: "var(--font-jetbrains-mono), ui-monospace, monospace",
+                        fontSize: 10,
+                        fontWeight: 500,
+                        letterSpacing: "0.16em",
+                        textTransform: "uppercase",
+                        color: "var(--ink-mute)",
+                      }}
+                    >
                       new player.
                     </p>
                     <input
@@ -646,45 +1243,86 @@ export function SessionView({ sessionId }: SessionViewProps) {
                         if (e.key === "Enter") addPlayer();
                         if (e.key === "Escape") cancelAddPlayer();
                       }}
-                      className="mt-2 h-11 w-full border border-[var(--line)] bg-background px-3 text-base outline-none transition focus:border-[var(--terracotta)]"
+                      style={{
+                        marginTop: 10,
+                        height: 44,
+                        width: "100%",
+                        border: "1px solid var(--rule)",
+                        background: "var(--bg-elev)",
+                        padding: "0 12px",
+                        fontSize: 15,
+                        color: "var(--ink)",
+                        outline: "none",
+                        transition: "border-color 0.15s ease",
+                      }}
+                      className="placeholder:text-[var(--ink-mute)]/60 focus:border-[var(--ink)]"
                     />
                     {addPlayerError ? (
-                      <p className="mt-1 text-xs text-[var(--terracotta)]">
+                      <p style={{ marginTop: 6, fontSize: 12, color: "var(--terra)" }}>
                         {addPlayerError}
                       </p>
                     ) : null}
-                    <div className="mt-3 flex gap-2">
-                      <button
+                    <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
+                      <motion.button
                         type="button"
                         onClick={cancelAddPlayer}
-                        className="h-9 flex-1 border border-[var(--line)] font-mono text-xs uppercase tracking-[0.12em] text-[var(--ink-soft)] transition hover:border-[var(--terracotta)] hover:text-foreground"
+                        whileTap={{ scale: 0.97 }}
+                        style={{
+                          ...monoBtn,
+                          border: "1px solid var(--rule)",
+                          color: "var(--ink-soft)",
+                        }}
+                        className="hover:border-[var(--terra)] hover:text-[var(--ink)]"
                       >
                         cancel.
-                      </button>
-                      <button
+                      </motion.button>
+                      <motion.button
                         type="button"
                         onClick={addPlayer}
                         disabled={!newPlayerName.trim() || isAddingPlayer}
-                        className="h-9 flex-1 border border-[var(--table-green)] font-mono text-xs uppercase tracking-[0.12em] text-[var(--table-green)] transition enabled:hover:bg-[var(--table-green)] enabled:hover:text-background disabled:cursor-not-allowed disabled:opacity-40"
+                        whileTap={{ scale: 0.97 }}
+                        style={{
+                          ...monoBtn,
+                          border: "1px solid var(--felt)",
+                          color: "var(--felt)",
+                        }}
+                        className="enabled:hover:bg-[var(--felt)] enabled:hover:text-[var(--bg)] disabled:cursor-not-allowed disabled:opacity-40"
                       >
                         {isAddingPlayer ? "adding..." : "add."}
-                      </button>
+                      </motion.button>
                     </div>
-                  </article>
-                )
-              ) : null}
-            </div>
+                  </motion.article>
+                )}
+              </AnimatePresence>
+            </motion.div>
 
+            {/* End session footer */}
             {isHost ? (
-              <div className="mt-8 border-t border-[var(--line)] pt-6">
-                <div className="grid gap-4 sm:grid-cols-[1fr_auto] sm:items-center">
-                  <p className="max-w-xl text-sm leading-6 text-[var(--ink-soft)]">
+              <div
+                style={{
+                  marginTop: 32,
+                  borderTop: "1px solid var(--rule)",
+                  paddingTop: 24,
+                }}
+              >
+                <div
+                  style={{ display: "grid", gap: 16 }}
+                  className="sm:grid-cols-[1fr_auto] sm:items-center"
+                >
+                  <p
+                    style={{
+                      fontSize: 14,
+                      lineHeight: 1.6,
+                      color: "var(--ink-soft)",
+                      maxWidth: 480,
+                    }}
+                  >
                     Done with the last hand? Enter final chips before closing
                     the table.
                   </p>
                   <Link
                     href={`/session/${sessionId}/end`}
-                    className="inline-flex h-12 items-center justify-center border border-[var(--terracotta)] px-5 font-mono text-xs uppercase tracking-[0.12em] text-[var(--terracotta)] transition hover:bg-[var(--terracotta)] hover:text-background"
+                    className="btn-terra"
                   >
                     end session.
                   </Link>
@@ -693,44 +1331,7 @@ export function SessionView({ sessionId }: SessionViewProps) {
             ) : null}
           </div>
         ) : null}
-      </section>
+      </div>
     </main>
-  );
-}
-
-function SessionMessage({
-  eyebrow,
-  headline,
-  body,
-}: {
-  eyebrow: string;
-  headline: string;
-  body?: string;
-}) {
-  return (
-    <div className="py-20">
-      <p className="font-mono text-sm uppercase tracking-[0.18em] text-[var(--terracotta)]">
-        {eyebrow}
-      </p>
-      <h1 className="mt-5 text-5xl font-semibold leading-none tracking-normal sm:text-6xl">
-        {headline}
-      </h1>
-      {body ? (
-        <p className="mt-6 max-w-xl text-lg leading-8 text-[var(--ink-soft)]">
-          {body}
-        </p>
-      ) : null}
-    </div>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="border border-[var(--line)] bg-[#fffaf0] p-4">
-      <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[var(--ink-soft)]">
-        {label}
-      </p>
-      <p className="mt-2 text-xl font-semibold leading-tight">{value}</p>
-    </div>
   );
 }
