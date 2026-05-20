@@ -300,7 +300,10 @@ export function SessionView({ sessionId }: SessionViewProps) {
     "loading" | "ready" | "missing" | "error"
   >("loading");
   const [errorMessage, setErrorMessage] = useState("");
-  const [pendingPlayerId, setPendingPlayerId] = useState<string | null>(null);
+  const [pendingBuyIn, setPendingBuyIn] = useState<{
+    playerId: string;
+    delta: 1 | -1;
+  } | null>(null);
   const [copyState, setCopyState] = useState<"idle" | "copied">("idle");
   const [ghostState, setGhostState] = useState<"idle" | "form">("idle");
   const [newPlayerName, setNewPlayerName] = useState("");
@@ -538,15 +541,16 @@ export function SessionView({ sessionId }: SessionViewProps) {
     setIsDeletingPlayer(false);
   }
 
-  async function addBuyIn(player: Player) {
-    if (!supabase || pendingPlayerId) return;
-    setPendingPlayerId(player.id);
+  async function adjustBuyIn(player: Player, delta: 1 | -1) {
+    if (!supabase || pendingBuyIn) return;
+    setPendingBuyIn({ playerId: player.id, delta });
     setErrorMessage("");
 
     const storedPin = getStoredPin(sessionId);
     const { data, error } = await supabase
-      .rpc("increment_player_buy_in", {
+      .rpc("adjust_player_buy_in", {
         player_id: player.id,
+        p_delta: delta,
         p_pin: storedPin,
       })
       .single<Player>();
@@ -554,7 +558,7 @@ export function SessionView({ sessionId }: SessionViewProps) {
     if (error || !data) {
       await refreshPlayers();
       setErrorMessage("something went wrong. please try again.");
-      setPendingPlayerId(null);
+      setPendingBuyIn(null);
       return;
     }
 
@@ -563,7 +567,7 @@ export function SessionView({ sessionId }: SessionViewProps) {
         currentPlayer.id === data.id ? data : currentPlayer,
       ),
     );
-    setPendingPlayerId(null);
+    setPendingBuyIn(null);
   }
 
   return (
@@ -967,7 +971,9 @@ export function SessionView({ sessionId }: SessionViewProps) {
               <AnimatePresence mode="popLayout">
                 {players.map((player) => {
                   const playerInFor = player.total_buy_ins * session.buy_in_amount;
-                  const isPending = pendingPlayerId === player.id;
+                  const pendingDelta =
+                    pendingBuyIn?.playerId === player.id ? pendingBuyIn.delta : null;
+                  const canSubtractBuyIn = player.total_buy_ins > 1;
 
                   return (
                     <motion.article
@@ -1035,7 +1041,7 @@ export function SessionView({ sessionId }: SessionViewProps) {
                             <motion.button
                               type="button"
                               onClick={() => setDeletePlayerId(player.id)}
-                              disabled={Boolean(pendingPlayerId)}
+                              disabled={Boolean(pendingBuyIn)}
                               aria-label={`Remove ${player.name}`}
                               whileTap={{ scale: 0.9 }}
                               style={{
@@ -1113,29 +1119,60 @@ export function SessionView({ sessionId }: SessionViewProps) {
                           buy-ins
                         </p>
                         {isHost ? (
-                          <motion.button
-                            type="button"
-                            onClick={() => addBuyIn(player)}
-                            disabled={Boolean(pendingPlayerId)}
-                            whileTap={{ scale: 0.96 }}
+                          <div
                             style={{
-                              height: 40,
-                              border: "1px solid var(--terra)",
-                              padding: "0 16px",
-                              fontFamily: "var(--font-jetbrains-mono), ui-monospace, monospace",
-                              fontSize: 11,
-                              fontWeight: 500,
-                              letterSpacing: "0.12em",
-                              textTransform: "uppercase",
-                              color: "var(--terra)",
-                              background: "transparent",
-                              cursor: "pointer",
-                              transition: "background 0.15s ease, color 0.15s ease",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 8,
                             }}
-                            className="enabled:hover:bg-[var(--terra)] enabled:hover:text-[var(--bg)] disabled:cursor-wait disabled:opacity-50"
                           >
-                            {isPending ? "adding..." : "+1 buy-in."}
-                          </motion.button>
+                            <motion.button
+                              type="button"
+                              onClick={() => adjustBuyIn(player, -1)}
+                              disabled={Boolean(pendingBuyIn) || !canSubtractBuyIn}
+                              aria-label={`Subtract one buy-in from ${player.name}`}
+                              whileTap={{ scale: 0.96 }}
+                              style={{
+                                height: 40,
+                                width: 40,
+                                border: "1px solid var(--rule-strong)",
+                                fontFamily: "var(--font-jetbrains-mono), ui-monospace, monospace",
+                                fontSize: 16,
+                                fontWeight: 500,
+                                color: "var(--ink)",
+                                background: "transparent",
+                                cursor: "pointer",
+                                transition: "background 0.15s ease, color 0.15s ease",
+                              }}
+                              className="enabled:hover:bg-[var(--ink)] enabled:hover:text-[var(--bg)] disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                              {pendingDelta === -1 ? "..." : "-"}
+                            </motion.button>
+                            <motion.button
+                              type="button"
+                              onClick={() => adjustBuyIn(player, 1)}
+                              disabled={Boolean(pendingBuyIn)}
+                              aria-label={`Add one buy-in for ${player.name}`}
+                              whileTap={{ scale: 0.96 }}
+                              style={{
+                                height: 40,
+                                border: "1px solid var(--terra)",
+                                padding: "0 16px",
+                                fontFamily: "var(--font-jetbrains-mono), ui-monospace, monospace",
+                                fontSize: 11,
+                                fontWeight: 500,
+                                letterSpacing: "0.12em",
+                                textTransform: "uppercase",
+                                color: "var(--terra)",
+                                background: "transparent",
+                                cursor: "pointer",
+                                transition: "background 0.15s ease, color 0.15s ease",
+                              }}
+                              className="enabled:hover:bg-[var(--terra)] enabled:hover:text-[var(--bg)] disabled:cursor-wait disabled:opacity-50"
+                            >
+                              {pendingDelta === 1 ? "adding..." : "+1 buy-in."}
+                            </motion.button>
+                          </div>
                         ) : null}
                       </div>
                     </motion.article>
