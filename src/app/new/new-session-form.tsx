@@ -5,9 +5,11 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { storePin } from "@/lib/pin-auth";
+import { generateSessionCode } from "@/lib/session-links";
 
 const MIN_PLAYERS = 2;
 const MAX_PLAYERS = 10;
+const SESSION_CODE_ATTEMPTS = 5;
 
 type FormErrors = {
   buyInAmount?: string;
@@ -124,15 +126,33 @@ export function NewSessionForm() {
 
     setIsSubmitting(true);
 
-    const { data: session, error: sessionError } = await supabase!
-      .from("sessions")
-      .insert({
-        name: sessionName.trim() || null,
-        buy_in_amount: parsedBuyIn,
-        host_pin: pin,
-      })
-      .select("id")
-      .single();
+    let session: { id: string } | null = null;
+    let sessionError: { code?: string } | null = null;
+
+    for (let attempt = 0; attempt < SESSION_CODE_ATTEMPTS; attempt += 1) {
+      const { data, error } = await supabase!
+        .from("sessions")
+        .insert({
+          name: sessionName.trim() || null,
+          buy_in_amount: parsedBuyIn,
+          host_pin: pin,
+          short_code: generateSessionCode(),
+        })
+        .select("id")
+        .single();
+
+      if (!error && data) {
+        session = data;
+        sessionError = null;
+        break;
+      }
+
+      sessionError = error;
+
+      if (error?.code !== "23505") {
+        break;
+      }
+    }
 
     if (sessionError || !session) {
       setErrors({ submit: "couldn't create the session." });

@@ -6,12 +6,14 @@ import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { supabase } from "@/lib/supabase";
 import { getStoredPin, storePin } from "@/lib/pin-auth";
+import { buildSessionUrl } from "@/lib/session-links";
 import { SuitRow } from "@/components/ui/suit-row";
 
 type Session = {
   id: string;
   name: string | null;
   buy_in_amount: number;
+  short_code: string | null;
   status: "active" | "ended" | string;
 };
 
@@ -337,7 +339,7 @@ export function SessionView({ sessionId }: SessionViewProps) {
 
       const { data: sessionData, error: sessionError } = await supabase
         .from("sessions")
-        .select("id,name,buy_in_amount,status")
+        .select("id,name,buy_in_amount,short_code,status")
         .eq("id", sessionId)
         .single();
 
@@ -498,7 +500,13 @@ export function SessionView({ sessionId }: SessionViewProps) {
 
   async function copyLink() {
     try {
-      await navigator.clipboard.writeText(window.location.href);
+      const shareUrl = buildSessionUrl({
+        origin: window.location.origin,
+        sessionId,
+        shortCode: session?.short_code,
+      });
+
+      await navigator.clipboard.writeText(shareUrl);
       setCopyState("copied");
       setTimeout(() => setCopyState("idle"), 2000);
     } catch {
